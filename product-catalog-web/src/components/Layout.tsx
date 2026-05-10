@@ -9,7 +9,7 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { cartCount } = useCart();
-  const { isAuthenticated, signIn, signingIn, user } = useAuth();
+  const { isAdmin, isAuthenticated, signIn, signOut, signingIn, user } = useAuth();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const deferredEmail = useDeferredValue(email);
@@ -49,6 +49,9 @@ export function Layout() {
           >
             Cart <span className="pill">{cartCount}</span>
           </NavLink>
+          <NavLink to="/admin" className={({ isActive }) => (isActive ? "active" : "")}>
+            Admin
+          </NavLink>
         </nav>
 
         <div className="account-panel">
@@ -56,9 +59,12 @@ export function Layout() {
             <div className="account-chip">
               <span className="status-dot" />
               <div>
-                <strong>{user?.name ?? "Signed in"}</strong>
+                <strong>{user?.name ?? "Signed in"}{isAdmin ? " · Admin" : ""}</strong>
                 <p>{user?.email}</p>
               </div>
+              <button type="button" className="ghost-button compact-button" onClick={signOut}>
+                Sign out
+              </button>
             </div>
           ) : (
             <form className="sign-in-form" onSubmit={handleSignIn}>

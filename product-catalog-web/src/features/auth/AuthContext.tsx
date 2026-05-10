@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { apiClient } from "../../lib/apiClient";
 
 const TOKEN_STORAGE_KEY = "product-catalog-token";
+const ADMIN_EMAIL = "admin@catalog.local";
 
 type User = {
   id: string;
@@ -16,8 +17,11 @@ type AuthContextValue = {
   token: string | null;
   user: User | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   signingIn: boolean;
   signIn: (input: { email: string; name?: string }) => Promise<void>;
+  signInAdmin: (input: { username: string; password: string }) => Promise<void>;
+  signOut: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -60,15 +64,36 @@ export function AuthProvider({ children }: PropsWithChildren) {
     },
   });
 
+  const adminSignInMutation = useMutation({
+    mutationFn: (input: { username: string; password: string }) =>
+      apiClient<{ token: string; user: User }>("/api/auth/admin-sign-in", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (data) => {
+      setToken(data.token);
+    },
+  });
+
+  const user = meQuery.data?.user ?? signInMutation.data?.user ?? adminSignInMutation.data?.user ?? null;
+  const isAdmin = user?.email === ADMIN_EMAIL;
+
   return (
     <AuthContext.Provider
       value={{
         token,
-        user: meQuery.data?.user ?? signInMutation.data?.user ?? null,
-        isAuthenticated: Boolean(token && (meQuery.data?.user ?? signInMutation.data?.user)),
-        signingIn: signInMutation.isPending,
+        user,
+        isAuthenticated: Boolean(token && user),
+        isAdmin,
+        signingIn: signInMutation.isPending || adminSignInMutation.isPending,
         signIn: async (input) => {
           await signInMutation.mutateAsync(input);
+        },
+        signInAdmin: async (input) => {
+          await adminSignInMutation.mutateAsync(input);
+        },
+        signOut: () => {
+          setToken(null);
         },
       }}
     >

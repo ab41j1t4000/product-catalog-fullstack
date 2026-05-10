@@ -3,9 +3,13 @@ import { createHash, randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 
 import { prisma } from "../db/prisma.js";
+import type { AdminCredentialsInput } from "../schemas/product.schema.js";
 import type { CheckoutInput, SignInInput } from "../schemas/cart.schema.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+export const ADMIN_EMAIL = "admin@catalog.local";
+const ADMIN_USERNAME = "admin";
+const ADMIN_PASSWORD = "admin";
 
 function createPaymentReference() {
   return `pay_${randomBytes(8).toString("hex")}`;
@@ -26,6 +30,39 @@ export async function signInUser(input: SignInInput) {
     create: {
       email: input.email,
       ...(input.name ? { name: input.name } : {}),
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
+  });
+
+  const token = createSessionToken();
+  await prisma.session.create({
+    data: {
+      token: hashToken(token),
+      userId: user.id,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
+
+  return { token, user };
+}
+
+export async function signInAdmin(input: AdminCredentialsInput) {
+  if (input.username !== ADMIN_USERNAME || input.password !== ADMIN_PASSWORD) {
+    throw new Error("Invalid admin credentials");
+  }
+
+  const user = await prisma.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    update: {
+      name: "Administrator",
+    },
+    create: {
+      email: ADMIN_EMAIL,
+      name: "Administrator",
     },
     select: {
       id: true,
@@ -74,6 +111,15 @@ export async function getUserFromRequest(request: FastifyRequest) {
   });
 
   return session?.user ?? null;
+}
+
+export async function requireAdminUser(request: FastifyRequest) {
+  const user = await getUserFromRequest(request);
+  if (!user || user.email !== ADMIN_EMAIL) {
+    return null;
+  }
+
+  return user;
 }
 
 export async function createCheckout(userId: string, input: CheckoutInput) {

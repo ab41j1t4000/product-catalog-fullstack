@@ -11,4 +11,21 @@ export const productSearchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(24).default(12),
 });
 
+export const adminCredentialsSchema = z.object({
+  username: z.string().trim().min(1),
+  password: z.string().min(1),
+});
+
+export const adminProductSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  category: z.string().trim().min(2).max(60),
+  description: z.string().trim().min(10).max(2000),
+  priceCents: z.coerce.number().int().min(0),
+  imageUrl: z.string().trim().url(),
+  inventory: z.coerce.number().int().min(0),
+  isFeatured: z.coerce.boolean().default(false),
+});
+
 export type ProductSearchInput = z.infer<typeof productSearchSchema>;
+export type AdminCredentialsInput = z.infer<typeof adminCredentialsSchema>;
+export type AdminProductInput = z.infer<typeof adminProductSchema>;

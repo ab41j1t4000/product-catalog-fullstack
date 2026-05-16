@@ -1,9 +1,17 @@
 import { prisma } from "../src/db/prisma.js";
 
+// Demo user used for practicing customer flows from the frontend.
+const demoUser = {
+  email: "alex@catalog.dev",
+  name: "Alex Carter",
+};
+
+// Seed products give the storefront enough data to exercise search, detail, and checkout.
 const products = [
   {
     slug: "aurora-lamp",
     name: "Aurora Lamp",
+    brand: "Northstar",
     category: "Lighting",
     description:
       "A low-profile desk lamp with warm LED diffusion and USB-C power for focused work sessions.",
@@ -16,6 +24,7 @@ const products = [
   {
     slug: "ridge-notebook",
     name: "Ridge Notebook",
+    brand: "Summit Paper Co.",
     category: "Stationery",
     description:
       "Thread-bound notebook with heavyweight dotted pages designed for planning, sketching, and sprint notes.",
@@ -28,6 +37,7 @@ const products = [
   {
     slug: "summit-bottle",
     name: "Summit Bottle",
+    brand: "Trailhead",
     category: "Hydration",
     description:
       "Powder-coated stainless bottle with double-wall insulation and a leak-resistant cap.",
@@ -40,6 +50,7 @@ const products = [
   {
     slug: "cascade-headphones",
     name: "Cascade Headphones",
+    brand: "Cascade Audio",
     category: "Audio",
     description:
       "Wireless over-ear headphones tuned for long listening sessions with soft memory foam padding.",
@@ -52,6 +63,7 @@ const products = [
   {
     slug: "field-tote",
     name: "Field Tote",
+    brand: "Canvas Works",
     category: "Bags",
     description:
       "Structured canvas tote with internal bottle sleeve, laptop compartment, and reinforced handles.",
@@ -64,6 +76,7 @@ const products = [
   {
     slug: "atlas-keyboard",
     name: "Atlas Keyboard",
+    brand: "Atlas",
     category: "Workspace",
     description:
       "Compact mechanical keyboard with tactile switches, hot-swap sockets, and wired USB-C connectivity.",
@@ -75,16 +88,21 @@ const products = [
   },
 ];
 
+/** Resets the local demo data and inserts a known set of products and one customer user. */
 async function main() {
+  // Delete dependent records first so foreign key constraints are respected.
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.session.deleteMany();
   await prisma.user.deleteMany();
   await prisma.product.deleteMany();
 
+  // Reinsert the baseline catalog and demo customer used during local development.
   await prisma.product.createMany({ data: products });
+  await prisma.user.create({ data: demoUser });
 }
 
+// Always disconnect Prisma whether the seed succeeds or fails.
 main()
   .then(async () => {
     await prisma.$disconnect();

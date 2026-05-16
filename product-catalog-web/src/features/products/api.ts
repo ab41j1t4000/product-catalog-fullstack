@@ -10,6 +10,7 @@ export type Product = {
   imageUrl: string;
   inventory: number;
   isFeatured: boolean;
+  brand: string;
 };
 
 export type ProductListResponse = {

@@ -3,7 +3,10 @@ import { useSearchParams } from "react-router-dom";
 
 import { ProductCard } from "../components/ProductCard";
 import { Skeleton } from "../components/Skeleton";
+import { getCatalogCopy } from "../features/catalog/copy";
+import { buildCatalogSearchParams } from "../features/catalog/searchParams";
 import { useCart } from "../features/cart/hooks";
+import { useLocale } from "../features/i18n/LocaleContext";
 import { useProducts } from "../features/products/hooks";
 
 export function ProductListPage() {
@@ -14,21 +17,14 @@ export function ProductListPage() {
   const deferredSearch = useDeferredValue(search);
   const category = initialCategory;
   const { addItem } = useCart();
+  const { locale } = useLocale();
   const { data, isLoading, isError, error } = useProducts(deferredSearch, category);
+  const copy = getCatalogCopy(locale);
 
+  /** Persists current catalog filters into the URL so the view is shareable and reload-safe. */
   const updateFilters = (nextSearch: string, nextCategory: string) => {
     startTransition(() => {
-      const nextParams = new URLSearchParams();
-
-      if (nextSearch.trim()) {
-        nextParams.set("search", nextSearch.trim());
-      }
-
-      if (nextCategory.trim()) {
-        nextParams.set("category", nextCategory.trim());
-      }
-
-      setSearchParams(nextParams);
+      setSearchParams(buildCatalogSearchParams(nextSearch, nextCategory));
     });
   };
 
@@ -36,10 +32,10 @@ export function ProductListPage() {
     <section className="catalog-layout">
       <aside className="filter-panel">
         <label className="search-field">
-          <span>Search</span>
+          <span>{copy.search}</span>
           <input
             type="search"
-            placeholder="Search products, category, or use case"
+            placeholder={copy.searchPlaceholder}
             value={search}
             onChange={(event) => {
               const nextSearch = event.target.value;
@@ -55,7 +51,7 @@ export function ProductListPage() {
             className={category === "" ? "selected" : ""}
             onClick={() => updateFilters(search, "")}
           >
-            All categories
+            {copy.allCategories}
           </button>
           {data?.categories.map((entry) => (
             <button
@@ -73,8 +69,8 @@ export function ProductListPage() {
       <div className="catalog-results">
         <div className="results-header">
           <div>
-            <p className="eyebrow">Product catalog</p>
-            <h2>{data?.pagination.total ?? 0} products ready to browse</h2>
+            <p className="eyebrow">{copy.eyebrow}</p>
+            <h2>{data?.pagination.total ?? 0} {copy.heading}</h2>
           </div>
         </div>
 
@@ -82,15 +78,15 @@ export function ProductListPage() {
 
         {isError ? (
           <div className="empty-state">
-            <h3>Unable to load products</h3>
+            <h3>{copy.loadError}</h3>
             <p>{error instanceof Error ? error.message : "Unknown error"}</p>
           </div>
         ) : null}
 
         {!isLoading && !isError && data?.items.length === 0 ? (
           <div className="empty-state">
-            <h3>No products match the current filters</h3>
-            <p>Try a broader keyword or switch back to all categories.</p>
+            <h3>{copy.noMatch}</h3>
+            <p>{copy.noMatchText}</p>
           </div>
         ) : null}
 

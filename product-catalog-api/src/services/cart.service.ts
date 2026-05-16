@@ -6,23 +6,28 @@ import { prisma } from "../db/prisma.js";
 import type { AdminCredentialsInput } from "../schemas/product.schema.js";
 import type { CheckoutInput, SignInInput } from "../schemas/cart.schema.js";
 
+// Session tokens stay valid for 30 days in this demo app.
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 export const ADMIN_EMAIL = "admin@catalog.local";
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = "admin";
 
+/** Creates a fake payment reference for the mock checkout response. */
 function createPaymentReference() {
   return `pay_${randomBytes(8).toString("hex")}`;
 }
 
+/** Generates a random session token before it is hashed and stored. */
 function createSessionToken() {
   return randomBytes(24).toString("hex");
 }
 
+/** Hashes tokens so the database never stores the raw bearer token. */
 export function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** Signs in a customer by upserting the user and issuing a new session. */
 export async function signInUser(input: SignInInput) {
   const user = await prisma.user.upsert({
     where: { email: input.email },
@@ -39,6 +44,7 @@ export async function signInUser(input: SignInInput) {
   });
 
   const token = createSessionToken();
+  // Store only the token hash so leaked database rows cannot be used directly.
   await prisma.session.create({
     data: {
       token: hashToken(token),
@@ -50,6 +56,7 @@ export async function signInUser(input: SignInInput) {
   return { token, user };
 }
 
+/** Verifies admin credentials and creates an admin session tied to a special user record. */
 export async function signInAdmin(input: AdminCredentialsInput) {
   if (input.username !== ADMIN_USERNAME || input.password !== ADMIN_PASSWORD) {
     throw new Error("Invalid admin credentials");
@@ -83,6 +90,7 @@ export async function signInAdmin(input: AdminCredentialsInput) {
   return { token, user };
 }
 
+/** Resolves the currently authenticated user from the Authorization header. */
 export async function getUserFromRequest(request: FastifyRequest) {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) {
@@ -94,6 +102,7 @@ export async function getUserFromRequest(request: FastifyRequest) {
     return null;
   }
 
+  // Sessions are only valid if both the hash matches and the expiry is in the future.
   const session = await prisma.session.findFirst({
     where: {
       token: hashToken(token),
@@ -113,6 +122,7 @@ export async function getUserFromRequest(request: FastifyRequest) {
   return session?.user ?? null;
 }
 
+/** Reuses normal auth lookup, then checks whether the signed-in user is the admin account. */
 export async function requireAdminUser(request: FastifyRequest) {
   const user = await getUserFromRequest(request);
   if (!user || user.email !== ADMIN_EMAIL) {
@@ -122,6 +132,40 @@ export async function requireAdminUser(request: FastifyRequest) {
   return user;
 }
 
+/** Lists a customer's prior orders with item snapshots for order history screens. */
+export function listOrders(userId: string) {
+  return prisma.order.findMany({
+    where: { userId },
+    orderBy: [{ createdAt: "desc" }],
+    select: {
+      id: true,
+      status: true,
+      subtotalCents: true,
+      taxCents: true,
+      totalCents: true,
+      paymentReference: true,
+      shippingAddress: true,
+      createdAt: true,
+      items: {
+        orderBy: [{ id: "asc" }],
+        select: {
+          id: true,
+          productId: true,
+          quantity: true,
+          unitPriceCents: true,
+          productName: true,
+          productCategory: true,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Creates a paid order from the current cart payload.
+ * This flow validates stock, calculates totals, decrements inventory,
+ * and stores the order plus order items inside one transaction.
+ */
 export async function createCheckout(userId: string, input: CheckoutInput) {
   const products = await prisma.product.findMany({
     where: {
@@ -136,6 +180,7 @@ export async function createCheckout(userId: string, input: CheckoutInput) {
     },
   });
 
+  // Build a lookup map so each cart line can validate against the fetched products.
   const productMap = new Map(products.map((product) => [product.id, product]));
 
   let subtotalCents = 0;
@@ -159,10 +204,12 @@ export async function createCheckout(userId: string, input: CheckoutInput) {
     };
   });
 
+  // Tax is mocked as a flat 10% to keep the checkout example simple.
   const taxCents = Math.round(subtotalCents * 0.1);
   const totalCents = subtotalCents + taxCents;
   const paymentReference = createPaymentReference();
 
+  // Inventory updates and order creation must succeed or fail together.
   const order = await prisma.$transaction(async (transaction) => {
     for (const item of orderItems) {
       await transaction.product.update({

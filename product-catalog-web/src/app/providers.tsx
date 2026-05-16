@@ -3,6 +3,7 @@ import type { PropsWithChildren } from "react";
 
 import { AuthProvider } from "../features/auth/AuthContext";
 import { CartProvider } from "../features/cart/hooks";
+import { LocaleProvider } from "../features/i18n/LocaleContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,9 +18,11 @@ const queryClient = new QueryClient({
 export function AppProviders({ children }: PropsWithChildren) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <CartProvider>{children}</CartProvider>
-      </AuthProvider>
+      <LocaleProvider>
+        <AuthProvider>
+          <CartProvider>{children}</CartProvider>
+        </AuthProvider>
+      </LocaleProvider>
     </QueryClientProvider>
   );
 }

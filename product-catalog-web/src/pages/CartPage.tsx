@@ -1,24 +1,21 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { checkout } from "../features/cart/api";
+import { getCartCopy } from "../features/cart/copy";
 import { useCart } from "../features/cart/hooks";
+import { getCartSummary } from "../features/cart/summary";
 import { useAuth } from "../features/auth/AuthContext";
-
-function formatCurrency(priceCents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(priceCents / 100);
-}
+import { useLocale } from "../features/i18n/LocaleContext";
 
 export function CartPage() {
   const { items, clearCart, removeItem, updateQuantity } = useCart();
   const { isAuthenticated, token } = useAuth();
+  const { formatCurrency, locale } = useLocale();
   const [shippingAddress, setShippingAddress] = useState("");
-  const subtotalCents = items.reduce((total, item) => total + item.priceCents * item.quantity, 0);
-  const estimatedTaxCents = Math.round(subtotalCents * 0.1);
-  const totalCents = subtotalCents + estimatedTaxCents;
+  const { subtotalCents, estimatedTaxCents, totalCents } = getCartSummary(items);
+  const copy = getCartCopy(locale);
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
@@ -46,8 +43,8 @@ export function CartPage() {
   if (items.length === 0) {
     return (
       <div className="empty-state">
-        <h2>Your cart is empty</h2>
-        <p>Add a few products from the catalog to test the checkout flow.</p>
+        <h2>{copy.empty}</h2>
+        <p>{copy.emptyText}</p>
       </div>
     );
   }
@@ -56,8 +53,8 @@ export function CartPage() {
     <section className="cart-layout">
       <div className="cart-items">
         <div className="section-heading">
-          <p className="eyebrow">Cart</p>
-          <h2>{items.length} items ready for checkout</h2>
+          <p className="eyebrow">{copy.cart}</p>
+          <h2>{items.length} {copy.itemsReady}</h2>
         </div>
         {items.map((item) => (
           <article className="cart-row" key={item.productId}>
@@ -67,7 +64,7 @@ export function CartPage() {
               <p>{item.category}</p>
             </div>
             <label className="quantity-field">
-              <span>Qty</span>
+              <span>{copy.qty}</span>
               <input
                 type="number"
                 min={1}
@@ -78,7 +75,7 @@ export function CartPage() {
             </label>
             <strong>{formatCurrency(item.priceCents * item.quantity)}</strong>
             <button type="button" className="ghost-button" onClick={() => removeItem(item.productId)}>
-              Remove
+              {copy.remove}
             </button>
           </article>
         ))}
@@ -86,28 +83,28 @@ export function CartPage() {
 
       <aside className="checkout-card">
         <div className="section-heading">
-          <p className="eyebrow">Checkout</p>
-          <h2>Mock payment summary</h2>
+          <p className="eyebrow">{copy.checkout}</p>
+          <h2>{copy.summary}</h2>
         </div>
         <label className="search-field">
-          <span>Shipping address</span>
+          <span>{copy.shipping}</span>
           <textarea
-            placeholder="221B Baker Street, London, NW1 6XE"
+            placeholder={copy.shippingPlaceholder}
             value={shippingAddress}
             onChange={(event) => setShippingAddress(event.target.value)}
           />
         </label>
         <div className="price-stack">
           <div>
-            <span>Subtotal</span>
+            <span>{copy.subtotal}</span>
             <strong>{formatCurrency(subtotalCents)}</strong>
           </div>
           <div>
-            <span>Estimated tax</span>
+            <span>{copy.tax}</span>
             <strong>{formatCurrency(estimatedTaxCents)}</strong>
           </div>
           <div className="total-row">
-            <span>Total</span>
+            <span>{copy.total}</span>
             <strong>{formatCurrency(totalCents)}</strong>
           </div>
         </div>
@@ -116,22 +113,25 @@ export function CartPage() {
           onClick={() => checkoutMutation.mutate()}
           disabled={!isAuthenticated || shippingAddress.trim().length < 10 || checkoutMutation.isPending}
         >
-          {checkoutMutation.isPending ? "Processing payment..." : "Pay now"}
+          {checkoutMutation.isPending ? copy.processing : copy.payNow}
         </button>
         {!isAuthenticated ? (
-          <p className="form-note">Sign in from the header before checkout.</p>
+          <p className="form-note">{copy.signInPrompt}</p>
         ) : null}
         {checkoutMutation.isError ? (
           <p className="form-note error">
             {checkoutMutation.error instanceof Error
               ? checkoutMutation.error.message
-              : "Checkout failed"}
+              : copy.checkoutFailed}
           </p>
         ) : null}
         {checkoutMutation.isSuccess ? (
           <div className="success-box">
-            <strong>Payment captured</strong>
-            <p>Reference: {checkoutMutation.data.paymentReference}</p>
+            <strong>{copy.paymentCaptured}</strong>
+            <p>{copy.reference}: {checkoutMutation.data.paymentReference}</p>
+            <Link to="/orders" className="secondary-link inline-link">
+              {copy.viewOrders}
+            </Link>
           </div>
         ) : null}
       </aside>

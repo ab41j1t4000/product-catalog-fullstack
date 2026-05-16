@@ -2,16 +2,19 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Prisma connects to a PostgreSQL database using DATABASE_URL from the environment.
 datasource db {
   provider = "postgresql"
 }
 
+// Orders move through a very small lifecycle in this demo app.
 enum OrderStatus {
   pending
   paid
   failed
 }
 
+// Users represent both normal customers and the special admin account.
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -24,6 +27,7 @@ model User {
   @@index([createdAt])
 }
 
+// Sessions store hashed tokens so API requests can be authenticated later.
 model Session {
   id        String   @id @default(cuid())
   token     String   @unique
@@ -36,6 +40,7 @@ model Session {
   @@index([expiresAt])
 }
 
+// Products drive the public catalog and the admin management screens.
 model Product {
   id          String      @id @default(cuid())
   slug        String      @unique
@@ -44,6 +49,7 @@ model Product {
   description String
   priceCents  Int
   imageUrl    String
+  brand       String
   inventory   Int         @default(0)
   isFeatured  Boolean     @default(false)
   createdAt   DateTime    @default(now())
@@ -55,6 +61,7 @@ model Product {
   @@index([priceCents])
 }
 
+// Orders capture the checkout summary for one user purchase.
 model Order {
   id                String      @id @default(cuid())
   userId            String
@@ -73,6 +80,7 @@ model Order {
   @@index([status, createdAt])
 }
 
+// Order items snapshot product details at purchase time for historical accuracy.
 model OrderItem {
   id               String  @id @default(cuid())
   orderId          String

@@ -13,20 +13,26 @@ export function ProductListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSearch = searchParams.get("search") ?? "";
   const initialCategory = searchParams.get("category") ?? "";
+  const rawPage = Number(searchParams.get("page") ?? "1");
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
   const [search, setSearch] = useState(initialSearch);
   const deferredSearch = useDeferredValue(search);
   const category = initialCategory;
   const { addItem } = useCart();
   const { locale } = useLocale();
-  const { data, isLoading, isError, error } = useProducts(deferredSearch, category);
+  const { data, isLoading, isError, error } = useProducts(deferredSearch, category, page);
   const copy = getCatalogCopy(locale);
 
   /** Persists current catalog filters into the URL so the view is shareable and reload-safe. */
-  const updateFilters = (nextSearch: string, nextCategory: string) => {
+  const updateFilters = (nextSearch: string, nextCategory: string, nextPage = 1) => {
     startTransition(() => {
-      setSearchParams(buildCatalogSearchParams(nextSearch, nextCategory));
+      setSearchParams(buildCatalogSearchParams(nextSearch, nextCategory, nextPage));
     });
   };
+
+  const totalPages = data?.pagination.totalPages ?? 1;
+  const canGoPrevious = page > 1;
+  const canGoNext = page < totalPages;
 
   return (
     <section className="catalog-layout">
@@ -40,7 +46,7 @@ export function ProductListPage() {
             onChange={(event) => {
               const nextSearch = event.target.value;
               setSearch(nextSearch);
-              updateFilters(nextSearch, category);
+              updateFilters(nextSearch, category, 1);
             }}
           />
         </label>
@@ -49,7 +55,7 @@ export function ProductListPage() {
           <button
             type="button"
             className={category === "" ? "selected" : ""}
-            onClick={() => updateFilters(search, "")}
+            onClick={() => updateFilters(search, "", 1)}
           >
             {copy.allCategories}
           </button>
@@ -58,7 +64,7 @@ export function ProductListPage() {
               type="button"
               key={entry}
               className={category === entry ? "selected" : ""}
-              onClick={() => updateFilters(search, entry)}
+              onClick={() => updateFilters(search, entry, 1)}
             >
               {entry}
             </button>
@@ -91,11 +97,35 @@ export function ProductListPage() {
         ) : null}
 
         {!isLoading && !isError && data?.items.length ? (
-          <div className="product-grid">
-            {data.items.map((product) => (
-              <ProductCard key={product.id} product={product} onAddToCart={addItem} />
-            ))}
-          </div>
+          <>
+            <div className="product-grid">
+              {data.items.map((product) => (
+                <ProductCard key={product.id} product={product} onAddToCart={addItem} />
+              ))}
+            </div>
+
+            <div className="pagination-controls" aria-label="Product pagination">
+              <button
+                type="button"
+                className="ghost-button compact-button"
+                onClick={() => updateFilters(search, category, page - 1)}
+                disabled={!canGoPrevious}
+              >
+                {copy.previousPage}
+              </button>
+              <p className="pagination-label">
+                {copy.pageLabel} {page} / {totalPages}
+              </p>
+              <button
+                type="button"
+                className="ghost-button compact-button"
+                onClick={() => updateFilters(search, category, page + 1)}
+                disabled={!canGoNext}
+              >
+                {copy.nextPage}
+              </button>
+            </div>
+          </>
         ) : null}
       </div>
     </section>

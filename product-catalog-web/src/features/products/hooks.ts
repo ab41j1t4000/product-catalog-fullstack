@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchProduct, fetchProducts } from "./api";
 
-export function useProducts(search: string, category: string) {
+export function useProducts(search: string, category: string, page: number) {
   return useQuery({
-    queryKey: ["products", search, category],
-    queryFn: () => fetchProducts(search, category),
+    queryKey: ["products", search, category, page],
+    queryFn: () => fetchProducts(search, category, page),
   });
 }
 

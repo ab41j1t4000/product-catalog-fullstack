@@ -24,7 +24,7 @@ export type ProductListResponse = {
   };
 };
 
-export function fetchProducts(search: string, category: string) {
+export function fetchProducts(search: string, category: string, page: number) {
   const params = new URLSearchParams();
 
   if (search.trim()) {
@@ -34,8 +34,7 @@ export function fetchProducts(search: string, category: string) {
   if (category.trim()) {
     params.set("category", category.trim());
   }
-
-  params.set("page", "1");
+  params.set("page", String(page));
   params.set("limit", "12");
 
   return apiClient<ProductListResponse>(`/api/products?${params.toString()}`);

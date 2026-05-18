@@ -6,6 +6,9 @@ export type CatalogCopy = {
   allCategories: string;
   eyebrow: string;
   heading: string;
+  pageLabel: string;
+  previousPage: string;
+  nextPage: string;
   loadError: string;
   noMatch: string;
   noMatchText: string;
@@ -20,6 +23,9 @@ export function getCatalogCopy(locale: Locale): CatalogCopy {
         allCategories: "すべてのカテゴリ",
         eyebrow: "商品カタログ",
         heading: "件の商品を表示中",
+        pageLabel: "ページ",
+        previousPage: "前へ",
+        nextPage: "次へ",
         loadError: "商品の読み込みに失敗しました",
         noMatch: "条件に一致する商品がありません",
         noMatchText: "キーワードを広げるか、カテゴリを変更してください。",
@@ -30,6 +36,9 @@ export function getCatalogCopy(locale: Locale): CatalogCopy {
         allCategories: "All categories",
         eyebrow: "Product catalog",
         heading: "products ready to browse",
+        pageLabel: "Page",
+        previousPage: "Previous",
+        nextPage: "Next",
         loadError: "Unable to load products",
         noMatch: "No products match the current filters",
         noMatchText: "Try a broader keyword or switch back to all categories.",

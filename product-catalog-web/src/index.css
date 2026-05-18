@@ -463,6 +463,25 @@ a {
   gap: 18px;
 }
 
+.pagination-controls,
+.pagination-label {
+  display: flex;
+  align-items: center;
+}
+
+.pagination-controls {
+  justify-content: center;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.pagination-label {
+  margin: 0;
+  color: #b4becc;
+  min-width: 96px;
+  justify-content: center;
+}
+
 .product-card {
   overflow: hidden;
 }

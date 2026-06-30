@@ -18,10 +18,16 @@ The API runs on `http://localhost:4000`.
 ## Available route
 
 - `GET /health`
+- `GET /products`
+- `GET /products/:id`
+- `GET /cart`
+- `POST /cart/items`
+- `PATCH /cart/items/:id`
+- `DELETE /cart/items/:id`
 
 ## What this app does
 
 - creates a Fastify server
 - enables CORS for the frontend during local development
-- exposes one health route
+- exposes in-memory product and cart routes
 - listens on port `4000` by default

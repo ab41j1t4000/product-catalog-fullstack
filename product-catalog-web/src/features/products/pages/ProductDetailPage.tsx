@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import { Box, Heading, Text } from "@chakra-ui/react";
+import { useParams } from "react-router-dom";
 import { fetchProducts } from "../api/fetchProducts";
 import type { Product } from "../types";
 import ProductInfo from "../components/ProductInfo";
 
 function ProductDetailPage() {
+    const { id = "" } = useParams();
     const [product, setProduct] = useState<Product | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
@@ -11,7 +14,7 @@ function ProductDetailPage() {
     useEffect(() => {
         const loadProducts = async () => {
             try {
-                const data = await fetchProducts();
+                const data = await fetchProducts(id);
                 setProduct(data.item);
             } catch (loadError) {
                 const nextError =
@@ -23,13 +26,22 @@ function ProductDetailPage() {
         };
 
         void loadProducts();
-    }, []);
+    }, [id]);
 
     return (
-        <div>
-            <h1>Product Detail Page</h1>
-            {product && <ProductInfo product={product} />}
-        </div>
+        <Box
+            as="main"
+            width="min(1200px, calc(100% - 32px))"
+            mx="auto"
+            py={{ base: "12", md: "16" }}
+        >
+            <Heading as="h1" size="2xl" mb="8">
+                Product Detail Page
+            </Heading>
+            {isLoading && <Text>Loading product...</Text>}
+            {error && <Text color="red.700">Error: {error}</Text>}
+            {!isLoading && !error && product && <ProductInfo product={product} />}
+        </Box>
     );
 }
 

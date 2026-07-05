@@ -1,5 +1,6 @@
 import { Box, Heading, Image, Stack, Text } from "@chakra-ui/react";
 import type { Product } from "../types";
+import AddToCart from "../../cart/components/AddToCart";
 
 export default function ProductInfo({ product }: { product: Product }) {
     return (
@@ -32,6 +33,7 @@ export default function ProductInfo({ product }: { product: Product }) {
                     >
                         {product.inStock ? "In stock" : "Out of stock"}
                     </Text>
+                    <AddToCart productId={product.id} inStock={product.inStock} />
                 </Stack>
             </Box>
         </Stack>

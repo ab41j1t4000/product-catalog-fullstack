@@ -4,7 +4,6 @@ import type {
     CreateCartItemInput,
     UpdateCartItemInput,
 } from "../schemas/cart.schema.js";
-import type { Product } from "../schemas/product.schema.js";
 import { getAllProducts } from "./product.service.js";
 
 const cartItems: CartItem[] = [];
@@ -46,7 +45,7 @@ function buildCart(): Cart {
     return {
         items: cartItems,
         totalItems: cartItems.reduce((sum, item) => sum + item.quantity, 0),
-        totalPriceInr: cartItems.reduce((sum, item) => sum + item.quantity * item.quantity * item.product.priceInr, 0),
+        totalPriceInr: cartItems.reduce((sum, item) => sum + item.quantity * item.product.priceInr, 0),
     };
 }
 export function getCart(): Cart {

@@ -18,6 +18,7 @@ async function bootstrap() {
 
   await server.register(cors, {
     origin: true,
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
 
   server.get("/health", async () => ({

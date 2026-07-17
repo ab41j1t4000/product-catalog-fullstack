@@ -2,7 +2,17 @@ import "dotenv/config";
 
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import { getAllProducts } from "./services/product.service.js";
+import type {
+  CreateProductInput,
+  UpdateProductInput,
+} from "./schemas/product.schema.js";
+import {
+  createProduct,
+  getAllProducts,
+  getProductById,
+  ProductServiceError,
+  updateProduct,
+} from "./services/product.service.js";
 import {
   getCart,
   addCartItem,
@@ -34,7 +44,7 @@ async function bootstrap() {
 
   server.get("/products/:id", async (request) => {
     const { id } = request.params as { id: string };
-    const product = getAllProducts().find((p) => p.id === id);
+    const product = getProductById(id);
 
     if (!product) {
       return {
@@ -47,6 +57,36 @@ async function bootstrap() {
       status: "ok",
       item: product,
     };
+  });
+
+  server.post("/admin/products", async (request, reply) => {
+    try {
+      const input = request.body as CreateProductInput;
+      const product = createProduct(input);
+      reply.code(201);
+      return {
+        status: "ok",
+        message: "Product created successfully.",
+        item: product,
+      };
+    } catch (error) {
+      return handleProductError(error, reply);
+    }
+  });
+
+  server.patch("/admin/products/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const input = request.body as UpdateProductInput;
+      const product = updateProduct(id, input);
+      return {
+        status: "ok",
+        message: "Product updated successfully.",
+        item: product,
+      };
+    } catch (error) {
+      return handleProductError(error, reply);
+    }
   });
 
 
@@ -142,4 +182,25 @@ function handleCartError(error: unknown, reply: { code: (statusCode: number) => 
     status: "error",
     message: "Internal server error"
   }
+}
+
+function handleProductError(error: unknown, reply: { code: (statusCode: number) => void }) {
+  if (error instanceof ProductServiceError) {
+    const statusCodeByError = {
+      PRODUCT_NOT_FOUND: 404,
+      INVALID_PRODUCT: 400,
+      DUPLICATE_SLUG: 409,
+    } as const;
+    reply.code(statusCodeByError[error.code]);
+    return {
+      status: "error",
+      message: error.message,
+    };
+  }
+
+  reply.code(500);
+  return {
+    status: "error",
+    message: "Internal server error",
+  };
 }

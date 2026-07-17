@@ -20,6 +20,8 @@ The API runs on `http://localhost:4000`.
 - `GET /health`
 - `GET /products`
 - `GET /products/:id`
+- `POST /admin/products`
+- `PATCH /admin/products/:id`
 - `GET /cart`
 - `POST /cart/items`
 - `PATCH /cart/items/:id`
@@ -29,5 +31,5 @@ The API runs on `http://localhost:4000`.
 
 - creates a Fastify server
 - enables CORS for the frontend during local development
-- exposes in-memory product and cart routes
+- exposes in-memory product, admin, and cart routes
 - listens on port `4000` by default

@@ -39,6 +39,9 @@ export default function AppShell() {
                         <NavLink to="/" fontWeight="600">
                             Catalog
                         </NavLink>
+                        <NavLink to="/admin" fontWeight="600">
+                            Admin
+                        </NavLink>
                         <NavLink to="/cart">
                             <HStack gap="2" fontWeight="600">
                                 <Text>

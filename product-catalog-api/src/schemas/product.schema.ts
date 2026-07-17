@@ -7,4 +7,8 @@ export type Product = {
     imageUrl: string;
     maskType: string;
     inStock: boolean;
-}
+};
+
+export type CreateProductInput = Omit<Product, "id">;
+
+export type UpdateProductInput = Partial<Omit<Product, "id">>;

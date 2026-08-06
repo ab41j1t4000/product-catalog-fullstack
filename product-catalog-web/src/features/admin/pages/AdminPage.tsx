@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, Grid, Heading, Stack, Text } from "@chakra-ui/react";
 import { createAdminProduct, type ProductPayload, updateAdminProduct } from "../api/adminApi";
 import ProductForm from "../components/ProductForm";
 import ProductInventoryList from "../components/ProductInventoryList";
-import { fetchProducts } from "../../products/api/fetchProducts";
+import { productKeys, productsQueryOptions } from "../../products/api/productQueries";
 import type { Product } from "../../products/types";
 
 const emptyProductForm: ProductPayload = {
@@ -17,30 +18,40 @@ const emptyProductForm: ProductPayload = {
 };
 
 function AdminPage() {
-    const [products, setProducts] = useState<Product[]>([]);
+    const queryClient = useQueryClient();
+    const productsQuery = useQuery(productsQueryOptions());
     const [formValues, setFormValues] = useState<ProductPayload>(emptyProductForm);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
 
-    useEffect(() => {
-        const loadProducts = async () => {
-            try {
-                const data = await fetchProducts();
-                setProducts(data.items);
-            } catch (loadError) {
-                const nextError =
-                    loadError instanceof Error ? loadError.message : "Unknown error";
-                setError(nextError);
-            } finally {
-                setIsLoading(false);
-            }
-        };
+    const products = productsQuery.data ?? [];
 
-        void loadProducts();
-    }, []);
+    const createProductMutation = useMutation({
+        mutationFn: createAdminProduct,
+        onSuccess: (response) => {
+            queryClient.setQueryData<Product[]>(productKeys.lists(), (currentProducts = []) => [
+                ...currentProducts,
+                response.item,
+            ]);
+            queryClient.setQueryData(productKeys.detail(response.item.id), response.item);
+        },
+    });
+
+    const updateProductMutation = useMutation({
+        mutationFn: ({ productId, input }: { productId: string; input: ProductPayload }) =>
+            updateAdminProduct(productId, input),
+        onSuccess: (response) => {
+            queryClient.setQueryData<Product[]>(productKeys.lists(), (currentProducts = []) =>
+                currentProducts.map((product) =>
+                    product.id === response.item.id ? response.item : product,
+                ),
+            );
+            queryClient.setQueryData(productKeys.detail(response.item.id), response.item);
+        },
+    });
+
+    const isSubmitting = createProductMutation.isPending || updateProductMutation.isPending;
 
     const handleFormChange = (field: keyof ProductPayload, value: string | number | boolean) => {
         setFormValues((currentValues) => ({
@@ -72,33 +83,27 @@ function AdminPage() {
     };
 
     const handleSubmit = async () => {
-        setIsSubmitting(true);
         setError("");
         setSuccessMessage("");
 
         try {
             if (selectedProduct) {
-                const response = await updateAdminProduct(selectedProduct.id, formValues);
-                setProducts((currentProducts) =>
-                    currentProducts.map((product) =>
-                        product.id === selectedProduct.id ? response.item : product,
-                    ),
-                );
+                const response = await updateProductMutation.mutateAsync({
+                    productId: selectedProduct.id,
+                    input: formValues,
+                });
                 setSelectedProduct(response.item);
                 setSuccessMessage("Product changes saved.");
                 return;
             }
 
-            const response = await createAdminProduct(formValues);
-            setProducts((currentProducts) => [...currentProducts, response.item]);
+            await createProductMutation.mutateAsync(formValues);
             setSuccessMessage("Product created successfully.");
             setFormValues(emptyProductForm);
         } catch (submitError) {
             const nextError =
                 submitError instanceof Error ? submitError.message : "Unknown error";
             setError(nextError);
-        } finally {
-            setIsSubmitting(false);
         }
     };
 
@@ -162,7 +167,7 @@ function AdminPage() {
                         </Text>
                     </Box>
 
-                    {isLoading && (
+                    {productsQuery.isPending && (
                         <Box
                             px="4"
                             py="4"
@@ -175,7 +180,7 @@ function AdminPage() {
                         </Box>
                     )}
 
-                    {!isLoading && error && products.length === 0 && (
+                    {!productsQuery.isPending && productsQuery.error && products.length === 0 && (
                         <Box
                             px="4"
                             py="4"
@@ -184,11 +189,11 @@ function AdminPage() {
                             borderWidth="1px"
                             borderColor="red.200"
                         >
-                            <Text color="red.700">Error: {error}</Text>
+                            <Text color="red.700">Error: {productsQuery.error.message}</Text>
                         </Box>
                     )}
 
-                    {!isLoading && !error && products.length === 0 && (
+                    {!productsQuery.isPending && !productsQuery.error && products.length === 0 && (
                         <Box
                             px="4"
                             py="4"
@@ -201,7 +206,7 @@ function AdminPage() {
                         </Box>
                     )}
 
-                    {!isLoading && products.length > 0 && (
+                    {!productsQuery.isPending && products.length > 0 && (
                         <ProductInventoryList
                             products={products}
                             selectedProductId={selectedProduct?.id ?? ""}

@@ -1,30 +1,10 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Box, Heading, SimpleGrid, Text } from "@chakra-ui/react";
 import ProductCard from "../components/ProductCard";
-import { fetchProducts } from "../api/fetchProducts";
-import type { Product } from "../types";
+import { productsQueryOptions } from "../api/productQueries";
 
 function ProductListPage() {
-    const [products, setProducts] = useState<Product[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState("");
-
-    useEffect(() => {
-        const loadProducts = async () => {
-            try {
-                const data = await fetchProducts();
-                setProducts(data.items);
-            } catch (loadError) {
-                const nextError =
-                    loadError instanceof Error ? loadError.message : "Unknown error";
-                setError(nextError);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        void loadProducts();
-    }, []);
+    const { data: products = [], error, isPending } = useQuery(productsQueryOptions());
 
     return (
         <Box
@@ -56,7 +36,7 @@ function ProductListPage() {
                 </Text>
             </Box>
 
-            {isLoading && (
+            {isPending && (
                 <Box
                     px="4"
                     py="4"
@@ -77,11 +57,11 @@ function ProductListPage() {
                     borderWidth="1px"
                     borderColor="red.200"
                 >
-                    <Text color="red.700">Error: {error}</Text>
+                    <Text color="red.700">Error: {error.message}</Text>
                 </Box>
             )}
 
-            {!isLoading && !error && (
+            {!isPending && !error && (
                 <SimpleGrid
                     as="section"
                     gap="5"

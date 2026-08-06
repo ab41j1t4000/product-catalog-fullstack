@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, Button, HStack, Input, Stack, Text } from "@chakra-ui/react";
 import type { CartItem } from "../types";
-import { useCart } from "../context/CartContext";
+import { useCart } from "../context/cart-context";
 
 export default function CartItemRow({ item }: { item: CartItem }) {
     const { updateItemQuantity, removeItem } = useCart();

@@ -1,7 +1,7 @@
 import { Box, Heading, Stack, Text } from "@chakra-ui/react";
 import CartItemRow from "../components/CartItemRow";
 import CartSummary from "../components/CartSummary";
-import { useCart } from "../context/CartContext";
+import { useCart } from "../context/cart-context";
 
 function CartPage() {
     const { cart, isLoading, error } = useCart();

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, HStack, Input, Stack, Text } from "@chakra-ui/react";
-import { useCart } from "../context/CartContext";
+import { useCart } from "../context/cart-context";
 
 type AddToCartProps = {
     productId: string;

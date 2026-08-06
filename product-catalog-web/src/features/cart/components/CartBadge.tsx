@@ -1,5 +1,5 @@
 import { Badge } from "@chakra-ui/react";
-import { useCart } from "../context/CartContext";
+import { useCart } from "../context/cart-context";
 
 export default function CartBadge() {
     const { cart } = useCart();

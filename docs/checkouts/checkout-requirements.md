@@ -1,82 +1,53 @@
 # Checkout Requirements
 
-## Document Status
+## Status and Reading Order
 
-- Status: proposed for MVP implementation
-- Product: Japanese mask catalog for customers in India
-- Scope: guest checkout with simulated payment
-- Related documents:
-  - [Checkout HLD](checkout-hld.md)
-  - [Checkout API Contract](checkout-api.md)
-  - [Checkout Backend LLD](checkout-lld.md)
+- Status: proposed MVP increment
+- Read next: [Checkout HLD](checkout-hld.md), [Checkout API](checkout-api.md), then [Checkout LLD](checkout-lld.md)
+- Repository baseline: Fastify API and React frontend with in-memory products and one in-memory cart
 
 ## Objective
 
-Allow a customer with items in their cart to provide contact and shipping details, complete a simulated payment, and receive a durable order confirmation. The backend remains the authority for product availability, pricing, shipping, and final totals.
+Add a guest checkout simulation that completes the existing catalog → product → cart journey. A customer provides contact and Indian shipping details, uses a deterministic simulated-payment token, and receives an in-memory order confirmation.
 
-## Current-System Constraints
+This increment is for learning and local development. It does not claim production durability, multi-user cart isolation, real inventory control, or real payment handling.
 
-The current application has:
+## Existing Behavior That Must Be Preserved
 
-- one process-wide in-memory cart shared by every browser;
-- in-memory products and cart items that disappear when the API restarts;
-- boolean `inStock` values rather than inventory quantities;
-- no user identity, cart identity, database, order model, or payment integration;
-- integer INR prices with no separate tax representation.
+- Product browsing and admin product creation/update continue to use `product.service.ts`.
+- Cart reads and mutations continue to use `cart.service.ts` and the current `/cart` endpoints.
+- Cart and product response shapes remain compatible with the existing frontend.
+- The backend remains an in-memory modular application for this increment.
+- The frontend continues to use React Router, Chakra UI, and TanStack Query.
 
-Checkout must not be presented as production-ready until carts and orders are isolated and persisted. The implementation should introduce repository interfaces so an in-memory first pass can be replaced by PostgreSQL without rewriting domain logic.
+## Current Constraints Accepted for This Increment
+
+| Constraint | MVP decision |
+| --- | --- |
+| One process-wide cart | Accepted for one-shopper local development; multi-cart identity is a required later increment |
+| In-memory data | Orders disappear when the API restarts |
+| `inStock` is boolean | Checkout validates availability but cannot reserve or decrement a quantity |
+| No authentication | Checkout is guest-only and order lookup is not protected for this local MVP |
+| Integer INR prices | Continue using integer rupees to match current product/cart types |
+| Routes live in `server.ts` | Mechanically extract an `app.ts` factory so existing and new routes can be tested with Fastify `inject()` |
 
 ## MVP Decisions
 
-| Area | Decision |
-| --- | --- |
-| Customer | Guest checkout only |
-| Market | Indian shipping addresses only |
-| Currency | INR only |
-| Money representation | Integer rupees for the current MVP; migrate to integer paise before real payments |
-| Tax | Product prices are tax-inclusive; no separate tax calculation in MVP |
-| Shipping | Free at or above ₹3,000 merchandise subtotal; otherwise ₹149 |
-| Payment | Token-based simulated card payment; never collect or store raw card details |
-| Inventory | Checkout requires `inStock === true`; quantity reservation/decrement is deferred until numeric inventory exists |
-| Cart identity | Anonymous cart ID per browser, supplied with API requests |
-| Idempotency | Required for checkout submissions |
-| Order persistence | Repository-backed; in-memory repository allowed for the first milestone, PostgreSQL required before deployment |
-| Authentication | Out of scope |
-
-## User Stories
-
-### Successful checkout
-
-As a customer, I can review my cart, enter valid contact and Indian shipping information, submit a simulated payment, and receive an order number and final totals.
-
-### Recoverable validation
-
-As a customer, I receive field-level guidance when my checkout information is invalid without losing my cart or form values.
-
-### Catalog changes
-
-As a customer, I am informed if a product became unavailable or its price changed before checkout. My cart remains available so I can review it.
-
-### Safe retry
-
-As a customer, retrying the same submission after a timeout does not create a second order or charge attempt.
-
-### Confirmation
-
-As a guest customer, I can view the confirmation for the order just placed without gaining access to another customer’s order.
+- Customer: guest checkout only.
+- Shipping destination: India only.
+- Currency: INR.
+- Product prices: treated as tax-inclusive.
+- Shipping: ₹149 when merchandise subtotal is below ₹3,000; otherwise free.
+- Payment: simulated token only; no card number, CVV, or expiry fields.
+- Successful checkout: create an in-memory order snapshot and clear the existing cart.
+- Failed checkout: preserve the cart.
+- Idempotency: require an `Idempotency-Key` header and store completed results in memory.
 
 ## Functional Requirements
 
-### Cart identity
-
-- The frontend obtains an anonymous cart ID before the first cart write.
-- Cart requests and checkout requests identify the same cart.
-- A missing, malformed, or unknown cart ID produces a structured error.
-- One browser’s cart must not be visible or mutable from another browser using a different cart ID.
-
 ### Checkout form
 
-The customer supplies:
+The frontend collects:
 
 - full name;
 - email address;
@@ -86,119 +57,88 @@ The customer supplies:
 - city;
 - state or union territory;
 - six-digit postal code;
-- country, fixed to `IN`.
+- country fixed to `IN`;
+- a simulated-payment outcome.
 
-The frontend may validate for usability, but the API performs authoritative validation.
+The browser validates for usability. The backend validates all fields again.
 
-### Order review
+### Server-owned totals
 
-- The checkout page displays current cart items, quantities, merchandise subtotal, shipping, and grand total.
-- The UI labels totals as provisional until checkout completes.
-- The request does not send trusted product names, prices, shipping costs, or totals.
-
-### Availability and price validation
-
-- The API reloads every product referenced by the cart.
-- Checkout fails if any product is missing or not in stock.
-- The API calculates all totals from current server-side product data.
-- If the current total differs from the last cart total observed by the client, the API returns a price-change conflict and the recalculated cart summary.
-- A price-change response does not clear the cart or create an order.
+- The checkout request does not contain trusted item prices or totals.
+- `checkout.service.ts` reads the current cart from `cart.service.ts`.
+- It reloads each product through `product.service.ts`.
+- It rejects missing or unavailable products.
+- It calculates item snapshots, subtotal, shipping, and total using current server-side prices.
 
 ### Simulated payment
 
-- The frontend sends a simulation token, not card data.
-- Supported initial tokens are `tok_simulated_success` and `tok_simulated_decline`.
-- A declined payment does not clear the cart or create a confirmed order.
-- Simulation tokens are development-only and must be replaced by provider-issued tokens before real payment integration.
+- `tok_simulated_success` produces approval.
+- `tok_simulated_decline` produces a deterministic decline.
+- Any other token is invalid.
+- No raw payment-card data enters the application.
 
 ### Order creation
 
-- A successful order has a unique non-sequential public ID.
-- Each order item stores an immutable snapshot of product ID, name, unit price, quantity, and line total.
-- The order stores the submitted contact and shipping address snapshot.
-- The order stores merchandise subtotal, shipping, tax, grand total, and currency.
-- The order stores lifecycle timestamps and status.
-- The cart is cleared only after order creation succeeds.
+- A successful checkout creates an order in `order.service.ts`.
+- The order stores customer, shipping address, product ID, product name, quantity, unit price, line total, subtotal, shipping, total, status, and timestamp snapshots.
+- Subsequent product edits do not change an existing order snapshot.
+- The cart is cleared only after the order has been created successfully.
 
-### Idempotency
+### Retry safety
 
-- The frontend creates one idempotency key per checkout attempt and reuses it when retrying that attempt.
-- The same cart and idempotency key with the same request returns the original result.
-- Reusing a key with a different payload returns a conflict.
-- Idempotency records have a documented retention period; the MVP uses 24 hours.
+- The frontend generates one UUID idempotency key when submission begins.
+- A network retry reuses that key.
+- Repeating the same request and key returns the original successful result rather than creating another order.
+- Reusing a key with different checkout data returns a conflict.
+- In-memory idempotency state is lost when the API restarts; this limitation is acceptable only for this MVP.
 
-### Confirmation access
+### Frontend completion
 
-- A successful checkout returns an opaque confirmation token.
-- Guest order retrieval requires both the order ID and confirmation token.
-- Confirmation responses exclude internal payment and operational metadata.
+- Add `/checkout` and `/orders/:id` routes.
+- The cart page links to checkout only when the cart has items.
+- Checkout shows an order summary based on the current cart query.
+- Successful checkout replaces the TanStack Query cart cache with the empty cart returned by the API.
+- Failure displays a useful message and retains entered form values and cart contents.
 
-## State Model
+## Error Requirements
 
-Order states for the simulated MVP:
-
-```text
-PENDING_PAYMENT → CONFIRMED
-PENDING_PAYMENT → PAYMENT_FAILED
-CONFIRMED → CANCELLED       (future admin workflow)
-CONFIRMED → FULFILLED       (future fulfillment workflow)
-```
-
-Only `CONFIRMED` is returned as a successful checkout result. The initial in-memory implementation may avoid persisting failed attempts, but PostgreSQL implementation should retain payment attempts for diagnosis and reconciliation.
-
-## Failure Requirements
-
-| Condition | Expected behavior |
+| Condition | Expected result |
 | --- | --- |
-| Empty cart | Reject; preserve cart |
-| Invalid request | Reject with field details; preserve cart |
-| Unknown cart | Reject without revealing other carts |
-| Product missing | Reject; identify affected cart line |
-| Product unavailable | Reject; identify affected cart line |
-| Price changed | Reject with refreshed summary; preserve cart |
-| Payment declined | Reject; preserve cart |
-| Duplicate request | Return original success or in-progress response |
-| Internal failure | Return safe error and request ID; do not clear cart |
-
-## Non-Functional Requirements
-
-- Checkout endpoint p95 latency under 750 ms for simulated payment in local/staging environments.
-- No raw payment-card details in requests, logs, storage, or analytics.
-- Personally identifiable information must not appear in normal application logs.
-- Every request has a request ID; checkout logs include cart ID, order ID, idempotency-key hash, outcome, and duration.
-- Validation and domain errors use stable machine-readable codes.
-- Checkout business logic is testable without starting Fastify.
-- Repository implementations are replaceable without changing route handlers or domain rules.
-- Concurrent submissions cannot create duplicate orders for the same idempotency key.
+| Invalid customer/address/payment fields | `400 INVALID_CHECKOUT` |
+| Empty cart | `400 EMPTY_CART` |
+| Product marked out of stock | `409 PRODUCT_UNAVAILABLE` |
+| Simulated decline | `422 PAYMENT_DECLINED` |
+| Idempotency key reused with another body | `409 IDEMPOTENCY_KEY_REUSED` |
+| Unknown order | `404 ORDER_NOT_FOUND` |
+| Unexpected error | `500 INTERNAL_ERROR` without sensitive details |
 
 ## Acceptance Criteria
 
-- A cart belonging to one anonymous cart ID can complete checkout successfully.
-- The response contains an order ID, confirmation token, status, item snapshots, and server-calculated totals.
-- A successful checkout clears only the checked-out cart.
-- A failed checkout leaves that cart unchanged.
-- Changing prices in the catalog before submission produces a conflict instead of silently ordering at the stale price.
-- `tok_simulated_decline` reliably produces the documented payment-declined error.
-- Repeating a successful request with the same idempotency key returns the same order.
-- Reusing the key with a modified body produces an idempotency conflict.
-- Unit and API integration tests cover the success path and every documented domain error.
+- Valid customer/address data and `tok_simulated_success` produce one confirmed order.
+- The backend, not the frontend, calculates final prices and shipping.
+- The order contains immutable item snapshots.
+- Successful checkout clears the current cart and returns that empty cart.
+- Empty-cart, unavailable-product, invalid-input, and payment-decline paths do not clear the cart.
+- Retrying a successful request with the same idempotency key returns the same order.
+- The confirmation page can display an order returned by `GET /orders/:id` while the API remains running.
+- Existing product, admin, and cart flows continue to work.
+- Backend and frontend TypeScript builds pass.
 
 ## Out of Scope
 
-- Real payment gateway integration;
-- authentication and saved addresses;
-- coupons, gift cards, tax invoicing, refunds, and cancellations;
-- international shipping;
-- multiple fulfillment centers;
-- quantity-based inventory reservation;
-- shipment tracking and customer notifications;
-- PCI-compliant card collection.
+- PostgreSQL and migrations;
+- separate carts for different browsers;
+- authentication and authorization;
+- real payments and provider webhooks;
+- numeric inventory, reservations, and oversell prevention;
+- tax invoices, coupons, refunds, cancellation, fulfillment, and email notifications;
+- production privacy and order-access controls.
 
-## Follow-Up Decisions Before Production
+## Required Follow-Up Before Multi-User or Production Use
 
-- Choose PostgreSQL schema and migration tooling.
-- Represent money in paise and define rounding rules.
-- Introduce numeric inventory and reservation expiry.
-- Select a payment provider and webhook reconciliation strategy.
-- Define privacy retention and customer-data deletion policies.
-- Add authentication or a stronger guest-order access mechanism.
+1. Add anonymous or authenticated cart identity and change cart APIs accordingly.
+2. Persist carts, orders, and idempotency records in PostgreSQL.
+3. Add numeric inventory and transactional reservation/decrement.
+4. Protect order retrieval.
+5. Move money representation from rupees to paise before real payments.
+6. Integrate a payment provider using tokens and webhooks.

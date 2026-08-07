@@ -1,106 +1,14 @@
 # Checkout API Contract
 
-## Conventions
+## Scope
 
-- Base URL in local development: `http://localhost:4000`
-- Content type: `application/json`
-- Currency: `INR`
-- Money: integer rupees for the simulated MVP
-- Dates: ISO 8601 UTC strings
-- IDs: opaque strings; clients must not infer ordering or type from their format
-- Checkout requests require `X-Cart-Id` and `Idempotency-Key`
+This contract extends the existing Fastify API without changing current product or cart endpoints. It uses the repository’s existing response style: `status`, `message`, and domain data at the top level.
 
-## Common Error Shape
+## Existing Endpoints Used by Checkout
 
-```json
-{
-  "status": "error",
-  "error": {
-    "code": "INVALID_CHECKOUT",
-    "message": "Checkout details are invalid.",
-    "fieldErrors": {
-      "shippingAddress.postalCode": "Enter a valid six-digit Indian postal code."
-    }
-  },
-  "requestId": "req_01J..."
-}
-```
-
-`code` is stable and intended for application logic. `message` is safe for display but may change. `fieldErrors` is optional.
-
-## Create Anonymous Cart
-
-### Request
-
-```http
-POST /carts
-Content-Type: application/json
-```
-
-No request body is required.
-
-### Response — `201 Created`
-
-```json
-{
-  "status": "ok",
-  "cart": {
-    "id": "cart_01J...",
-    "version": 1,
-    "items": [],
-    "totalItems": 0,
-    "subtotalInr": 0
-  }
-}
-```
-
-All existing `/cart` endpoints should be migrated to require `X-Cart-Id`. During migration, the frontend must create or restore its cart ID before querying the cart.
-
-## Preview Checkout
-
-Preview is recommended so the checkout page can show authoritative shipping and totals before payment.
-
-### Request
-
-```http
-POST /checkout/preview
-X-Cart-Id: cart_01J...
-Content-Type: application/json
-```
-
-```json
-{
-  "shippingAddress": {
-    "postalCode": "682001",
-    "country": "IN"
-  }
-}
-```
-
-### Response — `200 OK`
-
-```json
-{
-  "status": "ok",
-  "preview": {
-    "cartVersion": 3,
-    "currency": "INR",
-    "items": [
-      {
-        "productId": "1",
-        "name": "Kitsune Festival Mask",
-        "quantity": 1,
-        "unitPriceInr": 2499,
-        "lineTotalInr": 2499
-      }
-    ],
-    "subtotalInr": 2499,
-    "shippingInr": 149,
-    "taxInr": 0,
-    "totalInr": 2648
-  }
-}
-```
+- `GET /cart` supplies the checkout summary.
+- `GET /products/:id` is unchanged; checkout itself reloads products internally.
+- Existing cart mutation endpoints remain unchanged.
 
 ## Submit Checkout
 
@@ -108,14 +16,12 @@ Content-Type: application/json
 
 ```http
 POST /checkout
-X-Cart-Id: cart_01J...
 Idempotency-Key: 9ed7463a-8e5e-44fc-87d8-4ff00aa6388d
 Content-Type: application/json
 ```
 
 ```json
 {
-  "expectedCartVersion": 3,
   "customer": {
     "name": "Ananya Nair",
     "email": "ananya@example.com",
@@ -130,39 +36,49 @@ Content-Type: application/json
     "country": "IN"
   },
   "payment": {
-    "method": "SIMULATED_CARD",
     "token": "tok_simulated_success"
   }
 }
 ```
 
-### Validation rules
+The request contains no cart lines, product names, unit prices, shipping amount, or total. The backend reads those values from the existing services.
 
-- `expectedCartVersion`: positive integer
-- `customer.name`: trimmed, 2–120 characters
-- `customer.email`: valid email, maximum 254 characters
-- `customer.phone`: normalized Indian number in `+91XXXXXXXXXX` form
-- address text fields: trimmed and bounded; `line2` optional
-- `postalCode`: six digits
-- `country`: exactly `IN`
-- `payment.method`: exactly `SIMULATED_CARD` for the MVP
-- `payment.token`: allowlisted simulation token; maximum 100 characters
-- `Idempotency-Key`: UUID, 36 characters
+### Header validation
 
-The request intentionally excludes products, prices, shipping charges, tax, and total.
+- `Idempotency-Key` is required.
+- It must be a UUID string.
+- A retry of the same logical submission must reuse the same key.
+- A new submission after editing the form must use a new key.
 
-### Response — `201 Created`
+### Body validation
+
+| Field | Rule |
+| --- | --- |
+| `customer.name` | Trimmed string, 2–120 characters |
+| `customer.email` | Valid email, maximum 254 characters |
+| `customer.phone` | `+91` followed by 10 digits |
+| `shippingAddress.line1` | Trimmed string, 3–200 characters |
+| `shippingAddress.line2` | Optional, maximum 200 characters |
+| `shippingAddress.city` | Trimmed string, 2–100 characters |
+| `shippingAddress.state` | Trimmed string, 2–100 characters |
+| `shippingAddress.postalCode` | Exactly 6 digits |
+| `shippingAddress.country` | Exactly `IN` |
+| `payment.token` | `tok_simulated_success` or `tok_simulated_decline` |
+
+### Success response — `201 Created`
 
 ```json
 {
   "status": "ok",
+  "message": "Checkout completed successfully.",
   "order": {
-    "id": "ord_01J...",
-    "status": "CONFIRMED",
+    "id": "8b86e701-bb80-44bb-bf0b-c9f92a6206f9",
+    "status": "confirmed",
     "currency": "INR",
     "customer": {
       "name": "Ananya Nair",
-      "email": "ananya@example.com"
+      "email": "ananya@example.com",
+      "phone": "+919876543210"
     },
     "shippingAddress": {
       "line1": "12 Example Road",
@@ -183,104 +99,122 @@ The request intentionally excludes products, prices, shipping charges, tax, and 
     ],
     "subtotalInr": 2499,
     "shippingInr": 149,
-    "taxInr": 0,
-    "totalInr": 2648,
-    "createdAt": "2026-08-06T12:00:00.000Z"
+    "totalPriceInr": 2648,
+    "paymentReference": "pay_1ea3793b-3cc5-498f-aca4-a4ae08ded729",
+    "createdAt": "2026-08-07T10:30:00.000Z"
   },
-  "confirmationToken": "confirm_opaque_high_entropy_value",
   "cart": {
-    "id": "cart_01J...",
-    "version": 4,
     "items": [],
     "totalItems": 0,
-    "subtotalInr": 0
+    "totalPriceInr": 0
   }
 }
 ```
 
-The same successful request repeated with the same idempotency key returns `200 OK` and the stored response, with header `Idempotent-Replayed: true`.
+`cart` uses the existing `Cart` shape. `totalPriceInr` on the cart remains merchandise-only, matching current behavior. Shipping appears only on the checkout order.
 
-## Get Guest Order Confirmation
+### Idempotent replay — `200 OK`
+
+The API returns the same response body and adds:
+
+```http
+Idempotent-Replayed: true
+```
+
+No second order is created and the already-empty cart does not cause `EMPTY_CART` because replay lookup happens before cart validation.
+
+## Get Order
 
 ### Request
 
 ```http
-GET /orders/ord_01J.../confirmation
-X-Order-Confirmation-Token: confirm_opaque_high_entropy_value
+GET /orders/8b86e701-bb80-44bb-bf0b-c9f92a6206f9
 ```
 
-### Response — `200 OK`
+### Success response — `200 OK`
 
-Returns the public `order` object from the successful checkout response. It does not return phone number, payment token, provider metadata, internal notes, or idempotency data.
+```json
+{
+  "status": "ok",
+  "order": {
+    "id": "8b86e701-bb80-44bb-bf0b-c9f92a6206f9",
+    "status": "confirmed",
+    "currency": "INR",
+    "customer": {
+      "name": "Ananya Nair",
+      "email": "ananya@example.com",
+      "phone": "+919876543210"
+    },
+    "shippingAddress": {
+      "line1": "12 Example Road",
+      "line2": "Near Example Junction",
+      "city": "Kochi",
+      "state": "Kerala",
+      "postalCode": "682001",
+      "country": "IN"
+    },
+    "items": [
+      {
+        "productId": "1",
+        "name": "Kitsune Festival Mask",
+        "quantity": 1,
+        "unitPriceInr": 2499,
+        "lineTotalInr": 2499
+      }
+    ],
+    "subtotalInr": 2499,
+    "shippingInr": 149,
+    "totalPriceInr": 2648,
+    "paymentReference": "pay_1ea3793b-3cc5-498f-aca4-a4ae08ded729",
+    "createdAt": "2026-08-07T10:30:00.000Z"
+  }
+}
+```
+
+This unprotected endpoint is acceptable only for the local, single-user MVP. It must be secured or removed before public deployment.
+
+## Error Shape
+
+New checkout errors follow the existing flat API style while adding a stable `code`:
+
+```json
+{
+  "status": "error",
+  "code": "EMPTY_CART",
+  "message": "Cannot checkout an empty cart."
+}
+```
+
+Field validation may include `fieldErrors`:
+
+```json
+{
+  "status": "error",
+  "code": "INVALID_CHECKOUT",
+  "message": "Checkout details are invalid.",
+  "fieldErrors": {
+    "shippingAddress.postalCode": "Postal code must contain exactly 6 digits."
+  }
+}
+```
 
 ## Error Catalogue
 
-| HTTP | Code | Meaning | Retry behavior |
-| --- | --- | --- | --- |
-| 400 | `INVALID_CHECKOUT` | Body or header validation failed | Correct input |
-| 400 | `EMPTY_CART` | Cart has no lines | Add an item |
-| 400 | `UNSUPPORTED_ADDRESS` | Address is outside supported scope | Correct address |
-| 401 | `INVALID_CONFIRMATION_TOKEN` | Guest confirmation credential is invalid | Do not retry blindly |
-| 404 | `CART_NOT_FOUND` | Cart ID is unknown or expired | Create/restore cart |
-| 404 | `ORDER_NOT_FOUND` | Order does not exist | Verify order ID |
-| 409 | `CART_CHANGED` | Cart version, product price, or availability changed | Update cache and review |
-| 409 | `CHECKOUT_IN_PROGRESS` | Matching idempotent request is processing | Retry same request later |
-| 409 | `IDEMPOTENCY_KEY_REUSED` | Key was used with another payload | Generate a new key |
-| 422 | `PRODUCT_UNAVAILABLE` | One or more products cannot be ordered | Update cart |
-| 422 | `PAYMENT_DECLINED` | Simulated payment was declined | Use another simulation outcome |
-| 429 | `RATE_LIMITED` | Too many requests | Honor `Retry-After` |
-| 500 | `INTERNAL_ERROR` | Unexpected server error | Retry same idempotent request |
+| HTTP | Code | Behavior |
+| --- | --- | --- |
+| 400 | `INVALID_CHECKOUT` | Correct the request; cart is preserved |
+| 400 | `EMPTY_CART` | Add items before checkout |
+| 400 | `INVALID_IDEMPOTENCY_KEY` | Supply a UUID header |
+| 404 | `ORDER_NOT_FOUND` | Requested in-memory order does not exist |
+| 409 | `PRODUCT_UNAVAILABLE` | Review/remove unavailable cart item |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | Generate a key for the modified request |
+| 422 | `PAYMENT_DECLINED` | Use the successful simulation token |
+| 500 | `INTERNAL_ERROR` | Retry the same submission with the same key |
 
-## Cart-Changed Response
+## Frontend Handling
 
-```json
-{
-  "status": "error",
-  "error": {
-    "code": "CART_CHANGED",
-    "message": "Your cart changed. Review the latest prices before checking out."
-  },
-  "cart": {
-    "id": "cart_01J...",
-    "version": 4,
-    "items": [
-      {
-        "id": "item_01J...",
-        "productId": "1",
-        "quantity": 1,
-        "product": {
-          "id": "1",
-          "name": "Kitsune Festival Mask",
-          "priceInr": 2599,
-          "inStock": true
-        }
-      }
-    ],
-    "totalItems": 1,
-    "subtotalInr": 2599
-  },
-  "requestId": "req_01J..."
-}
-```
-
-The frontend should place the returned cart into the `cart` TanStack Query cache and require another explicit submission.
-
-## Payment-Declined Response
-
-```json
-{
-  "status": "error",
-  "error": {
-    "code": "PAYMENT_DECLINED",
-    "message": "The simulated payment was declined."
-  },
-  "requestId": "req_01J..."
-}
-```
-
-## Compatibility and Versioning
-
-- Additive response fields are backward compatible.
-- Removing or changing a field’s meaning requires a versioned endpoint or coordinated deployment.
-- Stable error codes are part of the contract.
-- Before real payments, introduce paise-denominated fields in a new contract version rather than silently changing the unit.
+- Do not automatically retry `400`, `404`, `409`, or `422` responses.
+- A network or `500` retry reuses the same idempotency key.
+- On success or replay, set `cartKeys.current` to the returned `cart`.
+- Navigate to `/orders/:id` using `order.id`.
+- Fetch confirmation through `GET /orders/:id` so refreshing the route works while the API process is alive.

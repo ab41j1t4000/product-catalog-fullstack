@@ -2,246 +2,227 @@
 
 ## Purpose
 
-This document describes the checkout system boundary, major components, data ownership, runtime flow, and evolution path. Detailed request schemas and backend interfaces are defined in the API and LLD documents.
+Describe how checkout fits into the repository as it exists today. This design intentionally extends the current flat `schemas/` and `services/` backend layout instead of replacing it with a new architecture.
 
-## Design Goals
+## Current Repository Baseline
 
-- Complete a guest checkout without trusting client-calculated commerce data.
-- Isolate carts between browsers.
-- Prevent duplicate orders during retries.
-- Preserve immutable order history even when products later change.
-- Support an in-memory learning implementation while keeping PostgreSQL migration straightforward.
-- Keep the initial system a modular monolith.
+```text
+product-catalog-api/src/
+├── server.ts
+├── schemas/
+│   ├── cart.schema.ts
+│   └── product.schema.ts
+└── services/
+    ├── cart.service.ts
+    └── product.service.ts
 
-## Context
+product-catalog-web/src/
+├── App.tsx
+├── features/cart/
+├── features/products/
+└── lib/queryClient.ts
+```
+
+The API stores products and one cart in module-level arrays. Fastify routes are registered directly in `server.ts`. The frontend already uses TanStack Query for products and cart state.
+
+## MVP Change Set
+
+```text
+product-catalog-api/src/
+├── app.ts                            # new app factory; existing and new route registration
+├── server.ts                         # keep process startup/listen/shutdown only
+├── schemas/
+│   ├── cart.schema.ts                # unchanged for MVP
+│   ├── product.schema.ts             # unchanged for MVP
+│   ├── checkout.schema.ts            # new checkout request types
+│   └── order.schema.ts               # new order snapshot types
+└── services/
+    ├── cart.service.ts               # add clearCart()
+    ├── product.service.ts            # reuse getProductById(); no required change
+    ├── payment.service.ts            # new deterministic simulator
+    ├── order.service.ts              # new in-memory order store
+    └── checkout.service.ts           # new orchestration and idempotency
+
+product-catalog-web/src/
+├── App.tsx                            # add checkout and confirmation routes
+├── features/cart/pages/CartPage.tsx  # add checkout action
+└── features/checkout/                # new checkout UI, API, types, and pages
+```
+
+## Component Flow
 
 ```mermaid
 flowchart LR
-    C["Customer browser"]
-    W["React + TanStack Query web app"]
-    API["Fastify API"]
-    CHECKOUT["Checkout domain service"]
-    CART["Cart repository"]
-    PRODUCT["Product repository"]
-    ORDER["Order repository"]
-    IDEM["Idempotency repository"]
-    PAY["Simulated payment adapter"]
+    PAGE["CheckoutPage"]
+    QUERY["TanStack cart query"]
+    API["POST /checkout in app.ts"]
+    CHECKOUT["checkout.service.ts"]
+    CART["cart.service.ts"]
+    PRODUCT["product.service.ts"]
+    PAYMENT["payment.service.ts"]
+    ORDER["order.service.ts"]
 
-    C --> W
-    W -->|"HTTPS JSON"| API
+    PAGE --> QUERY
+    PAGE --> API
     API --> CHECKOUT
     CHECKOUT --> CART
     CHECKOUT --> PRODUCT
+    CHECKOUT --> PAYMENT
     CHECKOUT --> ORDER
-    CHECKOUT --> IDEM
-    CHECKOUT --> PAY
+    API --> PAGE
 ```
 
-For the first milestone, repository adapters may use process memory. In the production path, cart, product, order, and idempotency repositories use PostgreSQL. The service and route interfaces remain unchanged.
+## Responsibilities
 
-## Component Responsibilities
+### New `app.ts` and existing `server.ts`
 
-### Web application
+- Move Fastify construction, CORS registration, current routes, and current error helpers from `server.ts` into an exported `buildServer()` function in `app.ts`.
+- Preserve existing route behavior during the move.
+- Register `POST /checkout` and `GET /orders/:id` in `app.ts`.
+- Read `Idempotency-Key` from the request headers.
+- Map `CheckoutServiceError` to HTTP responses and handle unknown order IDs explicitly.
+- Keep business calculations out of route handlers.
+- Keep `server.ts` responsible only for environment loading, calling `buildServer()`, listening, shutdown signals, and fatal startup errors.
 
-- Owns checkout form presentation and client-side validation.
-- Reads the current cart through TanStack Query.
-- Generates and retains an idempotency key for a submission attempt.
-- Calls checkout through a TanStack mutation.
-- Replaces the cart cache with the returned empty cart only after success.
-- Navigates to a confirmation route with guest confirmation credentials.
+### Existing `cart.schema.ts`
 
-### Fastify route layer
+- No required MVP change.
+- Its `Cart`, `CartItem`, and mutation input types remain the cart contract.
+- Multi-cart IDs and cart versions are deferred and must be added here in the later multi-user increment.
 
-- Parses headers, parameters, and request body.
-- Performs structural validation.
-- Adds request context and passes commands to the domain service.
-- Maps typed domain failures to the documented HTTP responses.
-- Does not calculate totals or directly mutate repositories.
+### Existing `product.schema.ts`
 
-### Checkout service
+- No required MVP change.
+- `Product` remains the catalog type used to create order snapshots.
+- Numeric inventory is deferred; `inStock` is the only availability check.
 
-- Orchestrates cart, catalog, payment, idempotency, and order operations.
-- Performs authoritative availability and price validation.
-- Applies the shipping policy and calculates totals.
-- Enforces idempotency.
-- Defines the transaction boundary.
-- Returns a sanitized checkout result.
+### Existing `cart.service.ts`
 
-### Cart repository
+- Continue owning the module-level `cartItems` array.
+- Add `clearCart(): Cart` that empties the array and returns `getCart()`.
+- Do not clear the cart anywhere else in the checkout path.
 
-- Loads an isolated cart by anonymous cart ID.
-- Stores product ID and quantity as canonical cart-line fields.
-- Clears one cart conditionally within checkout.
-- Does not own product prices or order history.
+### Existing `product.service.ts`
 
-### Product repository
+- Reuse `getProductById(productId)` to reload each cart product.
+- No repository abstraction is required in this MVP.
+- Product administration continues to mutate the same in-memory product objects.
 
-- Supplies current product state and price.
-- For the current model, exposes `inStock` only.
-- Later owns numeric on-hand and reserved quantities.
+### New `payment.service.ts`
 
-### Order repository
+- Convert an allowlisted simulation token into approved/declined behavior.
+- Return a generated payment reference on approval.
+- Never define or accept raw card fields.
 
-- Creates orders and immutable order-item snapshots.
-- Retrieves guest-safe confirmation views.
-- Enforces unique order IDs and idempotency association.
+### New `order.service.ts`
 
-### Idempotency repository
+- Store confirmed order snapshots in a module-level array.
+- Generate order IDs with `crypto.randomUUID()`.
+- Provide `createOrder(input)` and `getOrderById(id)`.
+- Never rebuild historical item data from the current product list.
 
-- Reserves a key for a cart and request hash.
-- Stores in-progress, completed, and failed results.
-- Prevents the same key from being used with another payload.
+### New `checkout.service.ts`
 
-### Payment adapter
+- Validate normalized checkout input.
+- Read the current cart and reload current products.
+- Build item snapshots and server-owned totals.
+- Call simulated payment.
+- Create the order, then clear the cart.
+- Store successful idempotent results in a module-level map.
 
-- Exposes a provider-neutral authorize interface.
-- Maps simulation tokens to deterministic success or decline results.
-- Never receives raw card details.
-- Can later be replaced with a real provider adapter and webhook handler.
+### New frontend checkout feature
 
-## Data Ownership
+- Render the form and current cart summary.
+- Submit via a TanStack Query mutation.
+- Reuse the same idempotency key for network retries.
+- Put the returned empty cart into `cartKeys.current` after success.
+- Navigate to `/orders/:id` and display the order query.
 
-| Data | System of record | Notes |
-| --- | --- | --- |
-| Product price and availability | Product repository | Reloaded during checkout |
-| Cart items and quantities | Cart repository | Scoped by anonymous cart ID |
-| Shipping policy | Checkout domain configuration | Version policy changes where required |
-| Customer/address snapshot | Order repository | Captured at checkout |
-| Order item price/name snapshots | Order repository | Never joined dynamically for historical display |
-| Payment result | Payment attempt/order storage | Provider-neutral reference only |
-| Idempotency result | Idempotency repository | Retained for at least 24 hours |
-
-## Successful Runtime Flow
+## Successful Sequence
 
 ```mermaid
 sequenceDiagram
-    participant W as Web app
-    participant R as Fastify route
-    participant I as Idempotency repository
-    participant S as Checkout service
-    participant C as Cart repository
-    participant P as Product repository
-    participant G as Payment adapter
-    participant O as Order repository
+    participant W as CheckoutPage
+    participant R as app.ts route
+    participant S as checkout.service.ts
+    participant C as cart.service.ts
+    participant P as product.service.ts
+    participant M as payment.service.ts
+    participant O as order.service.ts
 
-    W->>R: POST /checkout (cart ID + idempotency key)
-    R->>I: Reserve key and request hash
-    I-->>R: Reserved
-    R->>S: Execute checkout command
-    S->>C: Load cart
-    C-->>S: Cart lines
-    S->>P: Load current products
-    P-->>S: Prices and availability
-    S->>S: Validate and calculate totals
-    S->>G: Authorize simulated payment
-    G-->>S: Approved + reference
-    S->>O: Create confirmed order snapshots
-    S->>C: Clear cart
-    S-->>R: Checkout result + empty cart
-    R->>I: Store completed response
+    W->>R: POST /checkout + Idempotency-Key
+    R->>S: checkout(input, key)
+    S->>C: getCart()
+    C-->>S: current cart
+    S->>P: getProductById() for each line
+    P-->>S: current products
+    S->>S: validate and calculate totals
+    S->>M: simulatePayment(token, total)
+    M-->>S: approved + reference
+    S->>O: createOrder(snapshot)
+    O-->>S: confirmed order
+    S->>C: clearCart()
+    C-->>S: empty cart
+    S-->>R: order + cart
     R-->>W: 201 Created
-    W->>W: Replace cart cache and show confirmation
+    W->>W: update cart cache and navigate
 ```
 
-With PostgreSQL, validation, order creation, inventory mutation, cart clearing, and idempotency completion occur inside one database transaction where possible. A real external payment provider will require a saga/reconciliation design because an external authorization cannot participate in the database transaction.
+## Failure Ordering
 
-## Price-Change Flow
+Operations occur in this order:
 
-The frontend sends `expectedCartVersion` from its latest cart response. The backend reloads the cart and products and calculates the current summary. If the cart version differs or the calculated amount has changed:
+```text
+validate input
+→ read/validate cart
+→ reload/validate products
+→ calculate totals
+→ simulate payment
+→ create order
+→ clear cart
+→ cache idempotent result
+```
 
-1. no payment is attempted;
-2. no order is created;
-3. the cart is preserved;
-4. the API returns `409 CART_CHANGED` with the refreshed cart summary;
-5. the frontend updates the cart query cache and asks the customer to review changes.
+Therefore validation, availability, and payment failures occur before order creation and cart clearing. Because storage is in memory and there is no transaction, `createOrder` and `clearCart` must remain synchronous and non-throwing after validation in this MVP. PostgreSQL implementation must replace this assumption with a transaction.
 
-## Idempotency Strategy
+## Idempotency
 
-- Scope uniqueness by `(cartId, idempotencyKey)`.
-- Hash a canonical representation of the validated request.
-- First request reserves the key as `IN_PROGRESS`.
-- A matching completed request returns the stored status and response.
-- A matching in-progress request returns `409 CHECKOUT_IN_PROGRESS` and a retry hint.
-- The same key with a different request hash returns `409 IDEMPOTENCY_KEY_REUSED`.
-- Failed validation before reservation is not stored.
-- Deterministic payment declines may be stored so retries return the same outcome.
+`checkout.service.ts` maintains an in-memory map keyed by the request header value. Each value stores a stable request fingerprint and the completed result.
 
-## Anonymous Cart Identity
+- Same key + same normalized input: return the stored result.
+- Same key + different normalized input: throw `IDEMPOTENCY_KEY_REUSED`.
+- Store only completed successful checkouts initially.
+- A restart clears idempotency state; this is documented as an MVP limitation.
 
-The current singleton cart is insufficient. The checkout milestone introduces:
+## Security Boundaries
 
-1. `POST /carts` to create an anonymous cart;
-2. a cryptographically random cart ID;
-3. frontend persistence of that ID in local storage for the MVP;
-4. `X-Cart-Id` on cart and checkout requests;
-5. repository methods that always require a cart ID.
-
-The cart ID is an identifier, not an authentication secret. Production should prefer a secure, same-site cookie or signed cart credential to reduce unauthorized cart access.
-
-## Consistency Model
-
-### In-memory milestone
-
-- Supports one API process only.
-- Uses synchronous repository mutation and rollback-safe ordering.
-- Does not claim durability or cross-process concurrency safety.
-- Exists to validate domain behavior and API integration.
-
-### PostgreSQL milestone
-
-- Uses a transaction and row-level locking for the cart and inventory records.
-- Enforces unique idempotency keys and order IDs with database constraints.
-- Clears the cart only if its locked version matches the checked-out version.
-- Numeric inventory becomes a prerequisite for oversell protection.
-
-## Security and Privacy
-
-- Do not accept raw PAN, CVV, or expiry data.
-- Validate payload sizes and normalize customer input.
-- Rate-limit cart creation, checkout, and confirmation retrieval.
-- Redact email, phone, address, confirmation token, and payment token from logs.
-- Use opaque, high-entropy order and confirmation identifiers.
-- Allow CORS only from configured frontend origins before deployment.
-- Return generic internal errors with request IDs.
+- The API ignores client-supplied prices or totals because they are not part of the request.
+- Logs must not include the full request body, address, phone, email, or payment token.
+- CORS remains permissive for local development only.
+- Order lookup is unprotected in this increment and must not be deployed publicly.
+- No raw payment-card data is accepted.
 
 ## Observability
 
-Emit structured events:
+Use the existing Fastify logger with structured, non-PII fields:
 
-- `checkout.started`
-- `checkout.validation_failed`
-- `checkout.cart_changed`
-- `checkout.payment_declined`
-- `checkout.completed`
-- `checkout.failed`
+- request ID;
+- idempotency key hash or short prefix, never the complete key;
+- order ID after creation;
+- outcome/error code;
+- total item count and total INR;
+- duration.
 
-Useful fields are request ID, cart ID, order ID, idempotency-key hash, result code, item count, amount, currency, and duration. Do not log customer or payment-token fields.
+## Later Architecture, Not Part of This LLD
 
-Initial metrics:
+When PostgreSQL and multiple shoppers are introduced:
 
-- checkout attempts and completion rate;
-- validation and decline counts by error code;
-- duplicate/idempotent request count;
-- checkout latency percentiles;
-- unexpected failure rate.
+1. add cart identity to `cart.schema.ts` and cart routes;
+2. replace module arrays with repositories;
+3. add numeric inventory and database transactions;
+4. split the single `app.ts` route list into domain route plugins if it has become difficult to maintain;
+5. persist idempotency records;
+6. secure order access;
+7. replace `payment.service.ts` with a provider adapter and webhook reconciliation.
 
-## Deployment Evolution
-
-```text
-Milestone 1: repository interfaces + in-memory adapters + simulated payment
-Milestone 2: PostgreSQL carts/orders/idempotency + migrations + transactions
-Milestone 3: numeric inventory and reservations
-Milestone 4: real payment provider + webhooks + reconciliation
-Milestone 5: authentication, fulfillment, cancellation, and refunds
-```
-
-## Key Risks
-
-| Risk | Mitigation |
-| --- | --- |
-| Shared cart data | Introduce cart identity before checkout |
-| Duplicate order on retry | Persist idempotency reservation and response |
-| Stale client pricing | Recalculate and compare cart version server-side |
-| Overselling | Do not claim quantity guarantees until numeric inventory and locking exist |
-| Data loss on restart | Treat in-memory adapter as development-only; move orders to PostgreSQL |
-| Payment succeeds but order fails | Not applicable to deterministic simulation; add reconciliation before real provider |
+Those changes are intentionally not prerequisites for the current checkout simulation.

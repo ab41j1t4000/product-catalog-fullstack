@@ -85,3 +85,7 @@ export function removeCartItem(cartItemId: string) {
     const removedItem = cartItems.splice(index, 1)[0];
     return removedItem;
 }
+export function clearCart(): Cart {
+    cartItems.splice(0, cartItems.length);
+    return getCart();
+}

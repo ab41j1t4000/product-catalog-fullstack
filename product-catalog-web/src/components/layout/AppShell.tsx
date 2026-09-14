@@ -18,9 +18,10 @@ export default function AppShell() {
                     width="min(1200px, calc(100% - 32px))"
                     mx="auto"
                     py="4"
-                    align="center"
+                    direction={{ base: "column", sm: "row" }}
+                    align={{ base: "stretch", sm: "center" }}
                     justify="space-between"
-                    gap="4"
+                    gap={{ base: "3", sm: "4" }}
                 >
                     <Box>
                         <Text
@@ -35,7 +36,7 @@ export default function AppShell() {
                         <Heading size="md">Japanese Masks in India</Heading>
                     </Box>
 
-                    <HStack gap="5">
+                    <HStack gap={{ base: "4", sm: "5" }} justify={{ base: "space-between", sm: "flex-end" }}>
                         <NavLink to="/" fontWeight="600">
                             Catalog
                         </NavLink>

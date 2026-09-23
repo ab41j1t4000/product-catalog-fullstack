@@ -33,8 +33,8 @@ beforeEach(() => {
   resetCompletedCheckoutsForTests();
 });
 
-test("validates unknown request bodies and reports field errors", () => {
-  assert.throws(
+test("validates unknown request bodies and reports field errors", async () => {
+  await assert.rejects(
     () => checkout({ customer: {} }, randomUUID()),
     (error) =>
       error instanceof CheckoutServiceError &&
@@ -43,19 +43,19 @@ test("validates unknown request bodies and reports field errors", () => {
   );
 });
 
-test("rejects an empty cart", () => {
-  assert.throws(
+test("rejects an empty cart", async () => {
+  await assert.rejects(
     () => checkout(validInput(), randomUUID()),
     (error) => error instanceof CheckoutServiceError && error.code === "EMPTY_CART",
   );
 });
 
-test("rejects a product that becomes unavailable and preserves the cart", () => {
-  const product = getProductById("1")!;
-  addCartItem({ productId: product.id, quantity: 1 });
+test("rejects a product that becomes unavailable and preserves the cart", async () => {
+  const product = (await getProductById("1"))!;
+  await addCartItem({ productId: product.id, quantity: 1 });
   product.inStock = false;
   try {
-    assert.throws(
+    await assert.rejects(
       () => checkout(validInput(), randomUUID()),
       (error) => error instanceof CheckoutServiceError && error.code === "PRODUCT_UNAVAILABLE",
     );
@@ -70,22 +70,22 @@ test("shipping is ₹149 below ₹3,000 and free at the threshold", () => {
   assert.equal(calculateShippingInr(3_000), 0);
 });
 
-test("declined payment preserves the cart", () => {
-  addCartItem({ productId: "1", quantity: 1 });
-  assert.throws(
+test("declined payment preserves the cart", async () => {
+  await addCartItem({ productId: "1", quantity: 1 });
+  await assert.rejects(
     () => checkout(validInput("tok_simulated_decline"), randomUUID()),
     (error) => error instanceof CheckoutServiceError && error.code === "PAYMENT_DECLINED",
   );
   assert.equal(getCart().totalItems, 1);
 });
 
-test("success uses current catalog data, snapshots the order, and clears the cart", () => {
-  const product = getProductById("1")!;
+test("success uses current catalog data, snapshots the order, and clears the cart", async () => {
+  const product = (await getProductById("1"))!;
   const originalPrice = product.priceInr;
-  addCartItem({ productId: product.id, quantity: 1 });
+  await addCartItem({ productId: product.id, quantity: 1 });
   product.priceInr = 2_799;
   try {
-    const execution = checkout({ ...validInput(), totalPriceInr: 1 }, randomUUID());
+    const execution = await checkout({ ...validInput(), totalPriceInr: 1 }, randomUUID());
     assert.equal(execution.result.order.items[0]?.unitPriceInr, 2_799);
     assert.equal(execution.result.order.subtotalInr, 2_799);
     assert.equal(execution.result.order.totalPriceInr, 2_948);
@@ -96,17 +96,17 @@ test("success uses current catalog data, snapshots the order, and clears the car
   }
 });
 
-test("same key and normalized input replays; changed input conflicts", () => {
-  addCartItem({ productId: "2", quantity: 1 });
+test("same key and normalized input replays; changed input conflicts", async () => {
+  await addCartItem({ productId: "2", quantity: 1 });
   const key = randomUUID();
-  const first = checkout(validInput(), key);
-  const replay = checkout(validInput(), key);
+  const first = await checkout(validInput(), key);
+  const replay = await checkout(validInput(), key);
   assert.equal(replay.replayed, true);
   assert.equal(replay.result.order.id, first.result.order.id);
 
   const changed = validInput();
   changed.customer.name = "Different Name";
-  assert.throws(
+  await assert.rejects(
     () => checkout(changed, key),
     (error) => error instanceof CheckoutServiceError && error.code === "IDEMPOTENCY_KEY_REUSED",
   );

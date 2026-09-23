@@ -1,0 +1,5 @@
+project_id = "product-catalog-fullstack"
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]

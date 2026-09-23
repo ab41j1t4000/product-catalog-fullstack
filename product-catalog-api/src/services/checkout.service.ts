@@ -172,7 +172,10 @@ export function calculateShippingInr(subtotalInr: number): number {
   return subtotalInr >= FREE_SHIPPING_THRESHOLD_INR ? 0 : STANDARD_SHIPPING_INR;
 }
 
-export function checkout(rawInput: unknown, idempotencyKey: string): CheckoutExecution {
+export async function checkout(
+  rawInput: unknown,
+  idempotencyKey: string,
+): Promise<CheckoutExecution> {
   const input = normalizeCheckoutInput(rawInput);
   const requestFingerprint = fingerprint(input);
   const completed = completedCheckouts.get(idempotencyKey);
@@ -192,8 +195,8 @@ export function checkout(rawInput: unknown, idempotencyKey: string): CheckoutExe
     throw new CheckoutServiceError("EMPTY_CART", "Cannot checkout an empty cart.");
   }
 
-  const items: OrderItem[] = cart.items.map((cartItem) => {
-    const product = getProductById(cartItem.productId);
+  const items: OrderItem[] = await Promise.all(cart.items.map(async (cartItem) => {
+    const product = await getProductById(cartItem.productId);
     if (!product || !product.inStock) {
       throw new CheckoutServiceError(
         "PRODUCT_UNAVAILABLE",
@@ -211,7 +214,7 @@ export function checkout(rawInput: unknown, idempotencyKey: string): CheckoutExe
       unitPriceInr: product.priceInr,
       lineTotalInr,
     };
-  });
+  }));
 
   const subtotalInr = items.reduce(
     (subtotal, item) => checkedAdd(subtotal, item.lineTotalInr),

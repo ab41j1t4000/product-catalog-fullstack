@@ -10,9 +10,10 @@ simulation is the active feature under development.
 ## Tech Stack
 
 - frontend: React, TypeScript, Vite, Chakra UI, TanStack Query, and React Router
-- backend: Fastify and TypeScript
+- backend: Fastify, TypeScript, and Supabase Postgres for catalog persistence
 - component development: Storybook
-- current data store: in-memory arrays in the backend
+- current data store: Supabase for products when configured; in-memory fallback
+  for tests and process-local carts/orders
 
 ## Repo Structure
 
@@ -55,7 +56,8 @@ Endpoints:
 - admin page for creating and updating products
 - TanStack Query for frontend server-state fetching and mutations
 - Fastify APIs for health, products, admin product management, and cart management
-- in-memory product and cart services
+- Supabase-backed product service with an in-memory test fallback
+- in-memory cart, checkout retry, and order services
 - Storybook stories for selected UI components
 - checkout requirements, API contract, high-level design, and low-level design
 

@@ -30,17 +30,30 @@ export async function buildServer() {
   });
 
   server.get("/health", async () => ({ status: "ok", message: "Hello from the backend." }));
-  server.get("/products/", async () => ({ items: getAllProducts() }));
-  server.get("/products/:id", async (request) => {
-    const { id } = request.params as { id: string };
-    const product = getProductById(id);
-    if (!product) return { status: "error", message: "Product not found" };
-    return { status: "ok", item: product };
+  server.get("/products/", async (_request, reply) => {
+    try {
+      return { items: await getAllProducts() };
+    } catch (error) {
+      return handleProductError(error, reply);
+    }
+  });
+  server.get("/products/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const product = await getProductById(id);
+      if (!product) {
+        reply.code(404);
+        return { status: "error", message: "Product not found" };
+      }
+      return { status: "ok", item: product };
+    } catch (error) {
+      return handleProductError(error, reply);
+    }
   });
 
   server.post("/admin/products", async (request, reply) => {
     try {
-      const product = createProduct(request.body as CreateProductInput);
+      const product = await createProduct(request.body as CreateProductInput);
       reply.code(201);
       return { status: "ok", message: "Product created successfully.", item: product };
     } catch (error) {
@@ -51,7 +64,7 @@ export async function buildServer() {
   server.patch("/admin/products/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const product = updateProduct(id, request.body as UpdateProductInput);
+      const product = await updateProduct(id, request.body as UpdateProductInput);
       return { status: "ok", message: "Product updated successfully.", item: product };
     } catch (error) {
       return handleProductError(error, reply);
@@ -61,7 +74,7 @@ export async function buildServer() {
   server.get("/cart", async () => ({ status: "ok", cart: getCart() }));
   server.post("/cart/items", async (request, reply) => {
     try {
-      const item = addCartItem(request.body as { productId: string; quantity: number });
+      const item = await addCartItem(request.body as { productId: string; quantity: number });
       reply.code(201);
       return { status: "ok", message: "Cart item added successfully.", item, cart: getCart() };
     } catch (error) {
@@ -102,7 +115,7 @@ export async function buildServer() {
     }
 
     try {
-      const execution = checkout(request.body, idempotencyKey.toLowerCase());
+      const execution = await checkout(request.body, idempotencyKey.toLowerCase());
       if (execution.replayed) reply.code(200).header("Idempotent-Replayed", "true");
       else reply.code(201);
       request.log.info(
@@ -169,7 +182,12 @@ function handleCartError(error: unknown, reply: FastifyReply) {
 
 function handleProductError(error: unknown, reply: FastifyReply) {
   if (error instanceof ProductServiceError) {
-    const statuses = { PRODUCT_NOT_FOUND: 404, INVALID_PRODUCT: 400, DUPLICATE_SLUG: 409 } as const;
+    const statuses = {
+      PRODUCT_NOT_FOUND: 404,
+      INVALID_PRODUCT: 400,
+      DUPLICATE_SLUG: 409,
+      DATABASE_ERROR: 503,
+    } as const;
     reply.code(statuses[error.code]);
     return { status: "error", message: error.message };
   }

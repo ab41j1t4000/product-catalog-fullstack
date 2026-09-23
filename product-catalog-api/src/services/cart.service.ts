@@ -4,7 +4,7 @@ import type {
     CreateCartItemInput,
     UpdateCartItemInput,
 } from "../schemas/cart.schema.js";
-import { getAllProducts } from "./product.service.js";
+import { getProductById } from "./product.service.js";
 
 const cartItems: CartItem[] = [];
 let nextCartItemId = 1;
@@ -30,8 +30,8 @@ function assertValidQuantity(quantity: number) {
     }
 }
 
-function getProductOrThrow(productId: string) {
-    const product = getAllProducts().find((p) => p.id === productId);
+async function getProductOrThrow(productId: string) {
+    const product = await getProductById(productId);
     if (!product) {
         throw new CartServiceError("PRODUCT_NOT_FOUND", "Product not found.");
     }
@@ -51,9 +51,9 @@ function buildCart(): Cart {
 export function getCart(): Cart {
     return buildCart();
 }
-export function addCartItem(input: CreateCartItemInput) {
+export async function addCartItem(input: CreateCartItemInput) {
     assertValidQuantity(input.quantity);
-    const product = getProductOrThrow(input.productId);
+    const product = await getProductOrThrow(input.productId);
     const existingCartItem = cartItems.find((item) => item.productId === input.productId);
     if (existingCartItem) {
         existingCartItem.quantity += input.quantity;

@@ -109,7 +109,7 @@ description: "Actionable task list for persistent product catalog storage"
 - [X] T025 [P] Review `product-catalog-api/src/lib/supabase.ts` and `product-catalog-api/src/app.ts` for secret-safe logging and safe error responses; ensure raw credentials, provider URLs, and database diagnostics are not returned to clients or written to logs.
 - [X] T026 Run `npm run build` and `npm test` from `product-catalog-api/`, then record the observed output and any limitations in `specs/001-persistent-product-catalog-storage/quickstart.md`.
 - [X] T027 Run `npm run build` from `product-catalog-web/` and record frontend compatibility evidence in `specs/001-persistent-product-catalog-storage/quickstart.md`.
-- [ ] T028 Execute the optional configured-Supabase create, update, stop, restart, and readback scenario from `specs/001-persistent-product-catalog-storage/quickstart.md`, recording whether durable restart evidence was obtained without claiming local fallback as proof.
+- [X] T028 Execute the optional configured-Supabase create, update, stop, restart, and readback scenario from `specs/001-persistent-product-catalog-storage/quickstart.md`, recording whether durable restart evidence was obtained without claiming local fallback as proof.
 
 ---
 

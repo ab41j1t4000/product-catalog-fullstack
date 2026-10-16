@@ -2,12 +2,19 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let cachedClient: SupabaseClient | undefined;
 
+export class SupabaseConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SupabaseConfigurationError";
+  }
+}
+
 export function isSupabaseConfigured(): boolean {
   const hasUrl = Boolean(process.env.SUPABASE_URL);
   const hasSecretKey = Boolean(process.env.SUPABASE_SECRET_KEY);
 
   if (hasUrl !== hasSecretKey) {
-    throw new Error(
+    throw new SupabaseConfigurationError(
       "Set both SUPABASE_URL and SUPABASE_SECRET_KEY, or leave both unset.",
     );
   }
@@ -20,7 +27,7 @@ export function getSupabaseAdminClient(): SupabaseClient {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
 
   if (!url || !secretKey) {
-    throw new Error(
+    throw new SupabaseConfigurationError(
       "Supabase is not configured. Set SUPABASE_URL and SUPABASE_SECRET_KEY together.",
     );
   }

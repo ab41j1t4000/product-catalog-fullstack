@@ -12,17 +12,27 @@ import {
 } from "./services/cart.service.js";
 import { getOrderById } from "./services/order.service.js";
 import {
-  createProduct,
-  getAllProducts,
-  getProductById,
+  createProductService,
+  getDefaultProductService,
+  ProductService,
   ProductServiceError,
-  updateProduct,
 } from "./services/product.service.js";
+import type { ProductRepository } from "./repositories/product.repository.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function buildServer() {
+export type BuildServerOptions = {
+  productRepository?: ProductRepository;
+  productService?: ProductService;
+};
+
+export async function buildServer(options: BuildServerOptions = {}) {
+  const productService =
+    options.productService ??
+    (options.productRepository
+      ? createProductService(options.productRepository)
+      : getDefaultProductService());
   const server = Fastify({ logger: true });
   await server.register(cors, {
     origin: true,
@@ -32,7 +42,7 @@ export async function buildServer() {
   server.get("/health", async () => ({ status: "ok", message: "Hello from the backend." }));
   server.get("/products/", async (_request, reply) => {
     try {
-      return { items: await getAllProducts() };
+      return { items: await productService.getAllProducts() };
     } catch (error) {
       return handleProductError(error, reply);
     }
@@ -40,7 +50,7 @@ export async function buildServer() {
   server.get("/products/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const product = await getProductById(id);
+      const product = await productService.getProductById(id);
       if (!product) {
         reply.code(404);
         return { status: "error", message: "Product not found" };
@@ -53,7 +63,7 @@ export async function buildServer() {
 
   server.post("/admin/products", async (request, reply) => {
     try {
-      const product = await createProduct(request.body as CreateProductInput);
+      const product = await productService.createProduct(request.body as CreateProductInput);
       reply.code(201);
       return { status: "ok", message: "Product created successfully.", item: product };
     } catch (error) {
@@ -64,7 +74,10 @@ export async function buildServer() {
   server.patch("/admin/products/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const product = await updateProduct(id, request.body as UpdateProductInput);
+      const product = await productService.updateProduct(
+        id,
+        request.body as UpdateProductInput,
+      );
       return { status: "ok", message: "Product updated successfully.", item: product };
     } catch (error) {
       return handleProductError(error, reply);

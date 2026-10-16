@@ -1,6 +1,12 @@
-import "dotenv/config";
-import { buildServer } from "./app.js";
+import { config } from "dotenv";
 
+config();
+config({
+  path: process.env.NODE_ENV === "production" ? ".env.production" : ".env.local",
+  override: true,
+});
+
+const { buildServer } = await import("./app.js");
 const server = await buildServer();
 const port = Number(process.env.PORT ?? 4000);
 const host = "0.0.0.0";

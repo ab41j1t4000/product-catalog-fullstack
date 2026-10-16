@@ -20,8 +20,9 @@ The API runs on `http://localhost:4000`.
 ## Supabase setup
 
 The catalog uses Supabase when both server environment variables are present.
-Copy `.env.example` to `.env`, then replace the placeholders with the URL and
-secret key from your Supabase project's **Connect** dialog:
+For local development, the server loads `.env` and then `.env.local`; when
+`NODE_ENV=production`, it loads `.env` and then `.env.production`. Replace the
+placeholders with the URL and secret key from your Supabase project's **Connect** dialog:
 
 ```bash
 SUPABASE_URL=https://your-project-ref.supabase.co

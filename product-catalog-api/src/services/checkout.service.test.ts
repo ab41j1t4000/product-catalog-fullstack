@@ -10,7 +10,7 @@ import {
   resetCompletedCheckoutsForTests,
 } from "./checkout.service.js";
 import { resetOrdersForTests } from "./order.service.js";
-import { getProductById } from "./product.service.js";
+import { getProductById, updateProduct } from "./product.service.js";
 
 function validInput(token = "tok_simulated_success"): CheckoutInput {
   return {
@@ -53,7 +53,7 @@ test("rejects an empty cart", async () => {
 test("rejects a product that becomes unavailable and preserves the cart", async () => {
   const product = (await getProductById("1"))!;
   await addCartItem({ productId: product.id, quantity: 1 });
-  product.inStock = false;
+  await updateProduct(product.id, { inStock: false });
   try {
     await assert.rejects(
       () => checkout(validInput(), randomUUID()),
@@ -61,7 +61,7 @@ test("rejects a product that becomes unavailable and preserves the cart", async 
     );
     assert.equal(getCart().totalItems, 1);
   } finally {
-    product.inStock = true;
+    await updateProduct(product.id, { inStock: true });
   }
 });
 
@@ -83,7 +83,7 @@ test("success uses current catalog data, snapshots the order, and clears the car
   const product = (await getProductById("1"))!;
   const originalPrice = product.priceInr;
   await addCartItem({ productId: product.id, quantity: 1 });
-  product.priceInr = 2_799;
+  await updateProduct(product.id, { priceInr: 2_799 });
   try {
     const execution = await checkout({ ...validInput(), totalPriceInr: 1 }, randomUUID());
     assert.equal(execution.result.order.items[0]?.unitPriceInr, 2_799);
@@ -92,7 +92,7 @@ test("success uses current catalog data, snapshots the order, and clears the car
     assert.deepEqual(execution.result.cart, { items: [], totalItems: 0, totalPriceInr: 0 });
     assert.equal(getCart().totalItems, 0);
   } finally {
-    product.priceInr = originalPrice;
+    await updateProduct(product.id, { priceInr: originalPrice });
   }
 });
 

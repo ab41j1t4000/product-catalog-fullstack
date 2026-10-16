@@ -53,8 +53,8 @@ export default function ProductInventoryList({
                                         </Badge>
                                     </HStack>
                                     <HStack gap="3" wrap="wrap" color="gray.600">
-                                        <Text>Slug: {product.slug}</Text>
-                                        <Text>Type: {product.maskType}</Text>
+                                        {/* <Text>Slug: {product.slug}</Text>
+                                        <Text>Type: {product.maskType}</Text> */}
                                         <Text>Rs. {product.priceInr.toLocaleString("en-IN")}</Text>
                                     </HStack>
                                 </Stack>
